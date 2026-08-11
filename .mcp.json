@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "fantasy": {
+      "command": "/usr/local/opt/node@22/bin/node",
+      "args": ["node_modules/tsx/dist/cli.mjs", "src/mcp/index.ts"]
+    }
+  }
+}

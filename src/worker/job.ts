@@ -21,7 +21,9 @@ async function main(): Promise<void> {
     console.log(`${spec.name}: ${result.status}${result.error ? ` — ${result.error}` : ''}`);
     if (result.status === 'error') failed++;
   }
-  if (failed > 0) process.exitCode = 1;
+  // Explicit exit: undici's fetch keep-alive sockets can hold the event loop
+  // open for up to 600s after the last request. All DB writes are synchronous.
+  process.exit(failed > 0 ? 1 : 0);
 }
 
 function fail(message: string): never {

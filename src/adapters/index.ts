@@ -4,6 +4,7 @@ import { sleeperStatsJobs } from './sleeper-stats';
 import { fantasycalcJobs } from './fantasycalc';
 import { ktcJobs } from './ktc';
 import { fantasyprosJobs } from './fantasypros';
+import { valuationJobs } from '@/valuation/job';
 
 export const allJobs: JobSpec[] = [
   ...sleeperJobs,
@@ -11,4 +12,5 @@ export const allJobs: JobSpec[] = [
   ...fantasycalcJobs,
   ...ktcJobs,
   ...fantasyprosJobs,
+  ...valuationJobs,
 ];

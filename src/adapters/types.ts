@@ -11,7 +11,8 @@ export type SourceName =
   | 'fantasycalc'
   | 'ktc'
   | 'fantasypros'
-  | 'nflverse';
+  | 'nflverse'
+  | 'valuation';
 
 export interface JobCtx {
   db: typeof db;
