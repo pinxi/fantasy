@@ -85,7 +85,10 @@ export default async function BoardPage({ params }: { params: Promise<{ leagueId
                         <td className="w-7 px-2 py-0.5 text-right text-zinc-600">{row.posRank}</td>
                         <td className="max-w-[150px] truncate py-0.5">
                           {mine.has(row.playerId) && <span className="mr-1 text-emerald-400">◆</span>}
-                          {row.name} <span className="text-zinc-600">{row.team ?? ''}</span>
+                          <Link href={`/player/${row.playerId}`} className="hover:underline">
+                            {row.name}
+                          </Link>{' '}
+                          <span className="text-zinc-600">{row.team ?? ''}</span>
                         </td>
                         <td className="px-1 py-0.5 text-right text-zinc-400">{row.points.toFixed(0)}</td>
                         <td className="px-1 py-0.5 text-right text-zinc-500">{row.adp !== null ? row.adp.toFixed(0) : '·'}</td>

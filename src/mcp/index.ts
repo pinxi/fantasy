@@ -5,8 +5,10 @@ import { sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { SEASON } from '@/config';
 import { listLeagues, sourceHealthStrip } from '@/services/leagues';
-import { boardRows, leagueMeta } from '@/services/board';
+import { boardRows, leagueMeta, myRosterIds } from '@/services/board';
 import { getLeagueIntel } from '@/services/intel';
+import { marketDeltas, playerNews } from '@/services/player';
+import { SLEEPER_USER_ID } from '@/config';
 
 // Read-only MCP tools over the same services layer as the web UI.
 // The engine computes, the LLM interprets — never the reverse.
@@ -41,6 +43,21 @@ const TOOLS = [
         league: { type: 'string', description: 'League name (partial ok) or league_id' },
         position: { type: 'string', description: 'Optional: QB/RB/WR/TE/K/DEF/DL/LB/DB' },
         limit: { type: 'number', description: 'Rows per position (default 25)' },
+      },
+      required: ['league'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_edge_board',
+    description:
+      'Edge board for one league: players sorted by model-vs-market edge (buys first by default). Includes tier, points, our $, edge $, hidden points (fd/kr/bonus), Sleeper ADP, and whether the player is on my roster. In dynasty leagues, positive edge = win-now buy (this-season production the dynasty market discounts).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        league: { type: 'string', description: 'League name (partial ok) or league_id' },
+        sort: { type: 'string', description: 'buy (default) | sell | points' },
+        limit: { type: 'number', description: 'Max rows (default 40)' },
       },
       required: ['league'],
       additionalProperties: false,
@@ -128,6 +145,48 @@ function getPlayer(name: string): unknown {
       };
     }),
     marketValues: market.map((m) => ({ format: m.format, value: m.value, asOf: m.snapshot_date })),
+    marketTrend: marketDeltas(player.sleeper_id).map((d) => ({
+      source: d.source,
+      format: d.format,
+      current: Math.round(d.current),
+      change7d: d.d7 !== null ? Math.round(d.d7) : null,
+      change30d: d.d30 !== null ? Math.round(d.d30) : null,
+    })),
+    recentNews: playerNews(player.sleeper_id, 5).map((n) => ({
+      source: n.source,
+      title: n.title,
+      daysAgo: n.publishedAtMs ? Math.round((Date.now() - n.publishedAtMs) / 86400_000) : null,
+    })),
+  };
+}
+
+function getEdgeBoard(league: string, sort = 'buy', limit = 40): unknown {
+  const leagueId = resolveLeagueId(league);
+  if (!leagueId) return { error: `no league matching "${league}"` };
+  const meta = leagueMeta(leagueId);
+  const mine = myRosterIds(leagueId, SLEEPER_USER_ID);
+  let rows = boardRows(leagueId).filter((r) => r.edge !== null);
+  if (sort === 'sell') rows = rows.sort((a, b) => a.edge! - b.edge!);
+  else if (sort === 'points') rows = rows.sort((a, b) => b.points - a.points);
+  else rows = rows.sort((a, b) => b.edge! - a.edge!);
+  return {
+    league: meta?.name,
+    isDynasty: meta?.isDynasty ?? false,
+    sort,
+    rows: rows.slice(0, limit).map((r) => ({
+      name: r.name,
+      pos: r.pos,
+      team: r.team,
+      tier: r.tier,
+      points: Math.round(r.points),
+      dollar: r.dollar,
+      edgeDollar: Math.round(r.edge!),
+      adp: r.adp !== null ? Math.round(r.adp) : null,
+      fdPts: Math.round(r.fdPts),
+      krPts: Math.round(r.krPts),
+      bonusPts: Math.round(r.bonusPts),
+      mine: mine.has(r.playerId),
+    })),
   };
 }
 
@@ -171,6 +230,11 @@ server.setRequestHandler(CallToolRequestSchema, (request) => {
     case 'get_draft_board': {
       const a = args as { league?: unknown; position?: unknown; limit?: unknown };
       result = getDraftBoard(String(a?.league ?? ''), a?.position ? String(a.position) : undefined, typeof a?.limit === 'number' ? a.limit : 25);
+      break;
+    }
+    case 'get_edge_board': {
+      const a = args as { league?: unknown; sort?: unknown; limit?: unknown };
+      result = getEdgeBoard(String(a?.league ?? ''), a?.sort ? String(a.sort) : 'buy', typeof a?.limit === 'number' ? a.limit : 40);
       break;
     }
     case 'get_source_health':

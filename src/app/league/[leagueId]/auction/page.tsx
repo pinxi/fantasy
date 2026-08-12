@@ -243,7 +243,10 @@ export default async function AuctionPage({
               <td className="max-w-[240px] truncate py-0.5 pr-2">
                 <span className="mr-1.5 text-[10px] text-zinc-500">{r.pos}</span>
                 {mine.has(r.playerId) && <span className="mr-1 text-emerald-400">◆</span>}
-                {r.name} <span className="text-zinc-600">{r.team ?? ''}</span>
+                <Link href={`/player/${r.playerId}`} className="hover:underline">
+                  {r.name}
+                </Link>{' '}
+                <span className="text-zinc-600">{r.team ?? ''}</span>
               </td>
               <td className="px-2 py-0.5 text-right text-zinc-500">{r.tier ?? '·'}</td>
               <td className="px-2 py-0.5 text-right text-zinc-400">{r.points.toFixed(0)}</td>

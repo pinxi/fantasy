@@ -451,7 +451,7 @@ async function ingestTransactionWeek(ctx: JobCtx, leagueId: string, week: number
 const transactionsJob: JobSpec = {
   name: 'sleeper.transactions',
   source: 'sleeper',
-  cadence: { cron: '20 6 * * *', catchUp: true, staleAfterHours: 26 },
+  cadence: { cron: '20 6,18 * * *', catchUp: true, staleAfterHours: 26 },
   timeoutMs: 300_000,
   async run(ctx): Promise<JobReport> {
     let written = 0;

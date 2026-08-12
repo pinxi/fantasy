@@ -76,7 +76,10 @@ export default async function EdgePage({
                 <td className="max-w-[220px] truncate py-0.5 pr-2">
                   <span className={`mr-1.5 text-[10px] ${POS_COLORS[row.pos] ?? ''}`}>{row.pos}</span>
                   {mine.has(row.playerId) && <span className="mr-1 text-emerald-400">◆</span>}
-                  {row.name} <span className="text-zinc-600">{row.team ?? ''}</span>
+                  <Link href={`/player/${row.playerId}`} className="hover:underline">
+                    {row.name}
+                  </Link>{' '}
+                  <span className="text-zinc-600">{row.team ?? ''}</span>
                 </td>
                 <td className="px-2 py-0.5 text-right text-zinc-500">{row.tier ?? '·'}</td>
                 <td className="px-2 py-0.5 text-right text-zinc-400">{row.points.toFixed(0)}</td>
