@@ -5,7 +5,8 @@
       "name": "fantasy-dev",
       "runtimeExecutable": "/usr/bin/env",
       "runtimeArgs": ["PATH=/usr/local/opt/node@22/bin:/usr/bin:/bin", "node", "node_modules/next/dist/bin/next", "dev"],
-      "port": 3000
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

@@ -52,6 +52,9 @@ export default function Home() {
               <Link className="text-sky-400 hover:underline" href={`/league/${l.leagueId}/edge`}>
                 edge board →
               </Link>
+              <Link className="text-amber-400 hover:underline" href={`/league/${l.leagueId}/managers`}>
+                managers →
+              </Link>
               <a className="text-zinc-500 hover:underline" href={`/league/${l.leagueId}/board.csv`}>
                 csv
               </a>

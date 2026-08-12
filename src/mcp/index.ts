@@ -6,6 +6,7 @@ import { db } from '@/db/client';
 import { SEASON } from '@/config';
 import { listLeagues, sourceHealthStrip } from '@/services/leagues';
 import { boardRows, leagueMeta } from '@/services/board';
+import { getLeagueIntel } from '@/services/intel';
 
 // Read-only MCP tools over the same services layer as the web UI.
 // The engine computes, the LLM interprets — never the reverse.
@@ -49,6 +50,17 @@ const TOOLS = [
     name: 'get_source_health',
     description: 'Data-source freshness: which ingestion sources are green, stale, or failing, with messages.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_manager_tendencies',
+    description:
+      "Manager tendency profiles for one league, computed from every archived season of that league's history: auction bidding shape (top-3 concentration, early-spend rate, $ by position, biggest buy), snake-draft position timing (round of first QB/RB/WR/TE), rookie-draft mix, trade behavior (frequency, positional flow, pick hoarding, go-to partners), and FAAB aggression. Use before drafts and trade negotiations to exploit opponent habits.",
+    inputSchema: {
+      type: 'object',
+      properties: { league: { type: 'string', description: 'League name (partial ok) or league_id' } },
+      required: ['league'],
+      additionalProperties: false,
+    },
   },
 ];
 
@@ -164,6 +176,12 @@ server.setRequestHandler(CallToolRequestSchema, (request) => {
     case 'get_source_health':
       result = sourceHealthStrip();
       break;
+    case 'get_manager_tendencies': {
+      const league = String((args as { league?: unknown })?.league ?? '');
+      const leagueId = resolveLeagueId(league);
+      result = leagueId ? getLeagueIntel(leagueId) : { error: `no league matching "${league}"` };
+      break;
+    }
     default:
       return { content: [{ type: 'text', text: `unknown tool: ${name}` }], isError: true };
   }
