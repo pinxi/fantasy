@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/db/client';
+import { SEASON } from '@/config';
 
 export interface BoardRow {
   playerId: string;
@@ -13,9 +14,47 @@ export interface BoardRow {
   dollar: number | null;
   marketValue: number | null;
   edge: number | null;
+  adp: number | null;
   fdPts: number;
   krPts: number;
   bonusPts: number;
+}
+
+// Sleeper's week-0 "projection" rows carry ADP for every format — pick the one
+// matching this league's shape.
+function adpKeyForLeague(leagueId: string): string {
+  const row = db.get<{ scoring_settings: string; roster_positions: string; settings: string }>(
+    sql`select scoring_settings, roster_positions, settings from leagues where league_id = ${leagueId}`,
+  );
+  if (!row) return 'adp_ppr';
+  const scoring = JSON.parse(row.scoring_settings) as Record<string, number>;
+  const positions = JSON.parse(row.roster_positions) as string[];
+  const settings = JSON.parse(row.settings) as Record<string, unknown>;
+  const isDynasty = settings.type === 2;
+  const isSf = positions.includes('SUPER_FLEX') || positions.filter((p) => p === 'QB').length >= 2;
+  const isIdp = positions.some((p) => ['DL', 'LB', 'DB', 'IDP_FLEX'].includes(p));
+  if (isIdp) return isSf ? 'adp_idp' : 'adp_idp_1qb';
+  if (isDynasty) return isSf ? 'adp_dynasty_2qb' : 'adp_dynasty_ppr';
+  if (isSf) return 'adp_2qb';
+  const rec = scoring.rec ?? 0;
+  return rec >= 1 ? 'adp_ppr' : rec >= 0.5 ? 'adp_half_ppr' : 'adp_std';
+}
+
+function adpMap(adpKey: string): Map<string, number> {
+  const rows = db.all<{ player_id: string; adp: number | null }>(sql`
+    select ps.player_id, json_extract(ps.stats, ${'$.' + adpKey}) as adp
+    from projection_snapshots ps
+    join (
+      select player_id, max(id) as max_id from projection_snapshots
+      where source = 'sleeper' and season = ${SEASON} and week = 0
+      group by player_id
+    ) latest on latest.max_id = ps.id
+  `);
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (r.adp !== null && r.adp > 0 && r.adp < 999) map.set(r.player_id, r.adp);
+  }
+  return map;
 }
 
 export function latestRunId(leagueId: string): number | null {
@@ -26,6 +65,7 @@ export function latestRunId(leagueId: string): number | null {
 export function boardRows(leagueId: string): BoardRow[] {
   const runId = latestRunId(leagueId);
   if (!runId) return [];
+  const adp = adpMap(adpKeyForLeague(leagueId));
   const rows = db.all<{
     player_id: string;
     full_name: string;
@@ -61,6 +101,7 @@ export function boardRows(leagueId: string): BoardRow[] {
       dollar: r.auction_dollar,
       marketValue: r.market_value,
       edge: r.edge,
+      adp: adp.get(r.player_id) ?? null,
       fdPts: c.fd ?? 0,
       krPts: c.graft_kr ?? 0,
       bonusPts: (c.graft_bonus ?? 0) + Math.max((c.bonus ?? 0) - (c.graft_bonus ?? 0), 0),

@@ -7,7 +7,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ lea
   const name = leagueName(leagueId) ?? leagueId;
   const rows = boardRows(leagueId);
 
-  const header = 'pos,pos_rank,tier,player,team,points,vorp,dollar,market_value,edge,fd_pts,kr_pts,bonus_pts';
+  const header = 'pos,pos_rank,tier,player,team,points,adp,vorp,dollar,market_value,edge,fd_pts,kr_pts,bonus_pts';
   const lines = rows.map((r) =>
     [
       r.pos,
@@ -16,6 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ lea
       `"${r.name.replaceAll('"', '""')}"`,
       r.team ?? '',
       r.points.toFixed(1),
+      r.adp?.toFixed(1) ?? '',
       r.vorp?.toFixed(1) ?? '',
       r.dollar ?? '',
       r.marketValue ?? '',

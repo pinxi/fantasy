@@ -85,8 +85,8 @@ function recordHealth(spec: JobSpec, ok: boolean, message?: string): void {
   db.update(sourceHealth)
     .set(
       ok
-        ? { lastSuccessAt: now, consecutiveFailures: 0, staleAfterHours: spec.cadence.staleAfterHours, message }
-        : { lastErrorAt: now, consecutiveFailures: existing.consecutiveFailures + 1, message },
+        ? { lastSuccessAt: now, consecutiveFailures: 0, staleAfterHours: spec.cadence.staleAfterHours, message: message ?? null }
+        : { lastErrorAt: now, consecutiveFailures: existing.consecutiveFailures + 1, message: message ?? null },
     )
     .where(eq(sourceHealth.source, spec.source))
     .run();

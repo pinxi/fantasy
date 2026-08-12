@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { fetchRaw } from '@/lib/http';
 import { snapshotDate } from '@/lib/dates';
 import { marketValueSnapshots } from '@/db/schema';
+import { clearUnmatched, recordUnmatched } from '@/ids/unmatched';
 import type { JobCtx, JobReport, JobSpec } from '../types';
 
 const Item = z
@@ -103,7 +104,9 @@ const valuesJob: JobSpec = {
             assetId = ctx.ids.resolve('ktc', slug) ?? ctx.ids.resolveByName(item.playerName, item.position ?? undefined);
             if (assetId) {
               ctx.ids.record('ktc', slug, assetId, 'exact');
+              clearUnmatched('ktc', slug);
             } else {
+              recordUnmatched('ktc', slug, item.playerName, item.position, page.kind);
               unresolved++;
               continue;
             }

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { fetchRaw } from '@/lib/http';
 import { snapshotDate } from '@/lib/dates';
 import { marketValueSnapshots } from '@/db/schema';
+import { clearUnmatched, recordUnmatched } from '@/ids/unmatched';
 import type { JobCtx, JobReport, JobSpec } from '../types';
 
 const Item = z
@@ -68,13 +69,16 @@ const valuesJob: JobSpec = {
               assetType = 'pick';
               assetId = item.player.name.trim();
             } else {
+              const key = item.player.mflId != null ? `mfl:${item.player.mflId}` : item.player.name;
               assetId =
                 (item.player.mflId != null ? ctx.ids.resolve('mfl', String(item.player.mflId)) : null) ??
                 ctx.ids.resolveByName(item.player.name, item.player.position ?? undefined);
               if (!assetId) {
+                recordUnmatched('fantasycalc', key, item.player.name, item.player.position, config.format);
                 unresolved++;
                 continue;
               }
+              clearUnmatched('fantasycalc', key);
             }
           }
 

@@ -356,6 +356,20 @@ export const sourceHealth = sqliteTable('source_health', {
   message: text('message'),
 });
 
+export const unmatchedAssets = sqliteTable(
+  'unmatched_assets',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    source: text('source').notNull(),
+    sourceKey: text('source_key').notNull(),
+    name: text('name').notNull(),
+    pos: text('pos'),
+    context: text('context'),
+    lastSeenAt: integer('last_seen_at').notNull(),
+  },
+  (t) => [uniqueIndex('unmatched_uq').on(t.source, t.sourceKey)],
+);
+
 export const rawSnapshots = sqliteTable(
   'raw_snapshots',
   {

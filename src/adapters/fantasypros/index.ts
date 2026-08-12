@@ -3,6 +3,7 @@ import { env, SEASON } from '@/config';
 import { fetchRaw } from '@/lib/http';
 import { snapshotDate } from '@/lib/dates';
 import { rankingSnapshots } from '@/db/schema';
+import { clearUnmatched, recordUnmatched } from '@/ids/unmatched';
 import type { JobCtx, JobReport, JobSpec } from '../types';
 
 const Player = z
@@ -80,10 +81,12 @@ const rankingsJob: JobSpec = {
           const pos = positions[0]?.trim() || undefined;
           const sleeperId = ctx.ids.resolve('fantasypros', fpId) ?? ctx.ids.resolveByName(p.player_name, pos);
           if (!sleeperId) {
+            recordUnmatched('fantasypros', fpId, p.player_name, pos, profile);
             unresolved++;
             continue;
           }
           ctx.ids.record('fantasypros', fpId, sleeperId, 'exact');
+          clearUnmatched('fantasypros', fpId);
           const rank = p.rank_ecr ?? num(p.rank_ave);
           if (rank === null) continue;
           tx.insert(rankingSnapshots)

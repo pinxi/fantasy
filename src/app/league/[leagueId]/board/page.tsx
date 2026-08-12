@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { boardRows, leagueName } from '@/services/board';
+import { boardRows, leagueMeta } from '@/services/board';
+import { recomputeAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ const POS_COLORS: Record<string, string> = {
 
 export default async function BoardPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
-  const name = leagueName(leagueId);
+  const name = leagueMeta(leagueId)?.name;
   const rows = boardRows(leagueId);
 
   const byPos = new Map<string, typeof rows>();
@@ -36,15 +37,24 @@ export default async function BoardPage({ params }: { params: Promise<{ leagueId
         <Link href={`/league/${leagueId}/edge`} className="text-xs text-sky-400 hover:underline">
           edge board →
         </Link>
+        <Link href={`/league/${leagueId}/auction`} className="text-xs text-amber-400 hover:underline">
+          auction console →
+        </Link>
         <a href={`/league/${leagueId}/board.csv`} className="text-xs text-zinc-500 hover:underline">
           csv export
         </a>
+        <form action={recomputeAction} className="ml-auto">
+          <input type="hidden" name="leagueId" value={leagueId} />
+          <button type="submit" className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:border-emerald-500 hover:text-emerald-300">
+            recompute (~10s)
+          </button>
+        </form>
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {POS_ORDER.filter((pos) => byPos.has(pos)).map((pos) => {
           const list = byPos.get(pos)!.slice(0, 40);
           return (
-            <div key={pos} className="rounded border border-zinc-800">
+            <div key={pos} className="rounded border border-zinc-800" style={{ breakInside: 'avoid' }}>
               <div className={`border-b border-zinc-800 px-3 py-1.5 text-xs font-bold ${POS_COLORS[pos] ?? ''}`}>{pos}</div>
               <table className="w-full text-[12px]">
                 <tbody>
@@ -57,6 +67,7 @@ export default async function BoardPage({ params }: { params: Promise<{ leagueId
                           {row.name} <span className="text-zinc-600">{row.team ?? ''}</span>
                         </td>
                         <td className="px-1 py-0.5 text-right text-zinc-400">{row.points.toFixed(0)}</td>
+                        <td className="px-1 py-0.5 text-right text-zinc-500">{row.adp !== null ? row.adp.toFixed(0) : '·'}</td>
                         <td className="px-1 py-0.5 text-right font-bold text-zinc-200">${row.dollar ?? 0}</td>
                         <td className={`px-2 py-0.5 text-right ${row.edge !== null && row.edge > 2 ? 'text-emerald-400' : row.edge !== null && row.edge < -2 ? 'text-red-400' : 'text-zinc-600'}`}>
                           {row.edge !== null ? (row.edge > 0 ? `+${row.edge.toFixed(0)}` : row.edge.toFixed(0)) : '·'}
@@ -71,7 +82,7 @@ export default async function BoardPage({ params }: { params: Promise<{ leagueId
         })}
       </div>
       <p className="mt-3 text-[11px] text-zinc-600">
-        $ = league-scored auction value · edge = our $ vs market-implied $ (FantasyCalc) · thick rules = tier breaks
+        columns: rank · player · pts · sleeper adp (format-matched) · our $ · edge — thick rules = tier breaks
       </p>
     </div>
   );
