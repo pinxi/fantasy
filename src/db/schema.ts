@@ -371,6 +371,9 @@ export const unmatchedAssets = sqliteTable(
     name: text('name').notNull(),
     pos: text('pos'),
     context: text('context'),
+    // Sticky dismissal: ignored assets stay recorded (so re-ingestion doesn't
+    // resurface them) but don't count as warnings or appear on /crosswalk.
+    ignored: integer('ignored', { mode: 'boolean' }).notNull().default(false),
     lastSeenAt: integer('last_seen_at').notNull(),
   },
   (t) => [uniqueIndex('unmatched_uq').on(t.source, t.sourceKey)],

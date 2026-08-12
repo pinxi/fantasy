@@ -74,8 +74,8 @@ const valuesJob: JobSpec = {
                 (item.player.mflId != null ? ctx.ids.resolve('mfl', String(item.player.mflId)) : null) ??
                 ctx.ids.resolveByName(item.player.name, item.player.position ?? undefined);
               if (!assetId) {
-                recordUnmatched('fantasycalc', key, item.player.name, item.player.position, config.format);
-                unresolved++;
+                const ignored = recordUnmatched('fantasycalc', key, item.player.name, item.player.position, config.format);
+                if (!ignored) unresolved++;
                 continue;
               }
               clearUnmatched('fantasycalc', key);

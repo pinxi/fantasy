@@ -1,0 +1,1 @@
+ALTER TABLE `unmatched_assets` ADD `ignored` integer DEFAULT false NOT NULL;

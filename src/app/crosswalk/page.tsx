@@ -31,7 +31,7 @@ function candidates(name: string, pos: string | null): Candidate[] {
 
 export default function CrosswalkPage() {
   const unmatched = db.all<{ source: string; source_key: string; name: string; pos: string | null; context: string | null }>(
-    sql`select source, source_key, name, pos, context from unmatched_assets order by source, name`,
+    sql`select source, source_key, name, pos, context from unmatched_assets where ignored = 0 order by source, name`,
   );
 
   return (

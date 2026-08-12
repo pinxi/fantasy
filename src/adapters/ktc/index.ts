@@ -106,8 +106,8 @@ const valuesJob: JobSpec = {
               ctx.ids.record('ktc', slug, assetId, 'exact');
               clearUnmatched('ktc', slug);
             } else {
-              recordUnmatched('ktc', slug, item.playerName, item.position, page.kind);
-              unresolved++;
+              const ignored = recordUnmatched('ktc', slug, item.playerName, item.position, page.kind);
+              if (!ignored) unresolved++;
               continue;
             }
           } else {

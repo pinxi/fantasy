@@ -78,11 +78,12 @@ const rankingsJob: JobSpec = {
         for (const p of players) {
           const fpId = String(p.player_id);
           const positions = Array.isArray(p.player_positions) ? p.player_positions : (p.player_positions ?? '').split(',');
-          const pos = positions[0]?.trim() || undefined;
+          let pos = positions[0]?.trim() || undefined;
+          if (pos === 'DST') pos = 'DEF'; // FP team defenses resolve to Sleeper DEF entries ("Atlanta Falcons")
           const sleeperId = ctx.ids.resolve('fantasypros', fpId) ?? ctx.ids.resolveByName(p.player_name, pos);
           if (!sleeperId) {
-            recordUnmatched('fantasypros', fpId, p.player_name, pos, profile);
-            unresolved++;
+            const ignored = recordUnmatched('fantasypros', fpId, p.player_name, pos, profile);
+            if (!ignored) unresolved++;
             continue;
           }
           ctx.ids.record('fantasypros', fpId, sleeperId, 'exact');
