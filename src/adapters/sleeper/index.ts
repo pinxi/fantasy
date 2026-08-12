@@ -261,6 +261,7 @@ const leaguesJob: JobSpec = {
             startTimeMs: (d.start_time as number) ?? null,
             settings: (d.settings as Record<string, unknown>) ?? null,
             metadata: (d.metadata as Record<string, unknown>) ?? null,
+            draftOrder: (d.draft_order as Record<string, number>) ?? null,
             fetchedAt: Date.now(),
           })
           .onConflictDoUpdate({
@@ -270,6 +271,7 @@ const leaguesJob: JobSpec = {
               startTimeMs: (d.start_time as number) ?? null,
               settings: (d.settings as Record<string, unknown>) ?? null,
               metadata: (d.metadata as Record<string, unknown>) ?? null,
+              draftOrder: (d.draft_order as Record<string, number>) ?? null,
               fetchedAt: Date.now(),
             },
           })
@@ -289,6 +291,7 @@ const leaguesJob: JobSpec = {
                   draftSlot: (p.draft_slot as number) ?? null,
                   rosterId: (p.roster_id as number) ?? null,
                   playerId: p.player_id ? String(p.player_id) : null,
+                  pickedBy: p.picked_by ? String(p.picked_by) : null,
                   amount: p.metadata && (p.metadata as Record<string, unknown>).amount ? Number((p.metadata as Record<string, unknown>).amount) : null,
                   isKeeper: (p.is_keeper as boolean) ?? null,
                   metadata: (p.metadata as Record<string, unknown>) ?? null,
@@ -299,6 +302,7 @@ const leaguesJob: JobSpec = {
                   set: {
                     rosterId: (p.roster_id as number) ?? null,
                     playerId: p.player_id ? String(p.player_id) : null,
+                    pickedBy: p.picked_by ? String(p.picked_by) : null,
                     fetchedAt: Date.now(),
                   },
                 })
@@ -443,6 +447,10 @@ const transactionsJob: JobSpec = {
               adds: (t.adds as Record<string, number>) ?? null,
               drops: (t.drops as Record<string, number>) ?? null,
               faabBid: ((t.settings as Record<string, unknown> | null)?.waiver_bid as number) ?? null,
+              tradedPicks:
+                (t.draft_picks as Array<{ season: string; round: number; roster_id: number; previous_owner_id: number; owner_id: number }>) ??
+                null,
+              waiverBudget: (t.waiver_budget as Array<{ sender: number; receiver: number; amount: number }>) ?? null,
               metadata: (t.metadata as Record<string, unknown>) ?? null,
               createdAtMs: (t.created as number) ?? null,
               fetchedAt: Date.now(),

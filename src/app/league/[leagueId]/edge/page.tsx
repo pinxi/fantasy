@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { boardRows, leagueMeta } from '@/services/board';
+import { boardRows, leagueMeta, myRosterIds } from '@/services/board';
+import { SLEEPER_USER_ID } from '@/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,7 @@ export default async function EdgePage({
   const { sort } = await searchParams;
   const meta = leagueMeta(leagueId);
   const name = meta?.name;
+  const mine = myRosterIds(leagueId, SLEEPER_USER_ID);
   let rows = boardRows(leagueId).filter((r) => r.edge !== null);
 
   if (sort === 'sell') rows = rows.sort((a, b) => a.edge! - b.edge!);
@@ -73,6 +75,7 @@ export default async function EdgePage({
               <tr key={row.playerId} className="border-t border-zinc-800/60">
                 <td className="max-w-[220px] truncate py-0.5 pr-2">
                   <span className={`mr-1.5 text-[10px] ${POS_COLORS[row.pos] ?? ''}`}>{row.pos}</span>
+                  {mine.has(row.playerId) && <span className="mr-1 text-emerald-400">◆</span>}
                   {row.name} <span className="text-zinc-600">{row.team ?? ''}</span>
                 </td>
                 <td className="px-2 py-0.5 text-right text-zinc-500">{row.tier ?? '·'}</td>

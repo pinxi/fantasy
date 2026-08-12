@@ -15,6 +15,13 @@
       "when": 1786543041823,
       "tag": "0001_purple_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786544319774,
+      "tag": "0002_sloppy_luminals",
+      "breakpoints": true
     }
   ]
 }

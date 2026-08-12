@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { boardRows, leagueMeta } from '@/services/board';
+import { boardRows, leagueMeta, myRosterIds } from '@/services/board';
+import { SLEEPER_USER_ID } from '@/config';
 import { recomputeAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
@@ -19,8 +20,11 @@ const POS_COLORS: Record<string, string> = {
 
 export default async function BoardPage({ params }: { params: Promise<{ leagueId: string }> }) {
   const { leagueId } = await params;
-  const name = leagueMeta(leagueId)?.name;
+  const meta = leagueMeta(leagueId);
+  const name = meta?.name;
   const rows = boardRows(leagueId);
+  const mine = myRosterIds(leagueId, SLEEPER_USER_ID);
+  const myRows = rows.filter((r) => mine.has(r.playerId)).sort((a, b) => b.points - a.points);
 
   const byPos = new Map<string, typeof rows>();
   for (const row of rows) {
@@ -50,6 +54,22 @@ export default async function BoardPage({ params }: { params: Promise<{ leagueId
           </button>
         </form>
       </div>
+      {meta?.isKeeper && myRows.length > 0 && (
+        <div className="mb-4 rounded border border-amber-900/60 bg-amber-950/20 px-4 py-3">
+          <div className="mb-2 text-xs font-bold text-amber-300">
+            keeper shortlist — my roster by value (3 keepers, none from the top 3 rounds)
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-[12px]">
+            {myRows.slice(0, 12).map((r) => (
+              <span key={r.playerId} className="text-zinc-300">
+                {r.name} <span className="text-zinc-500">{r.pos}</span>{' '}
+                <span className="font-bold text-zinc-100">${r.dollar ?? 0}</span>
+                <span className="text-zinc-500"> adp {r.adp !== null ? r.adp.toFixed(0) : '—'}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {POS_ORDER.filter((pos) => byPos.has(pos)).map((pos) => {
           const list = byPos.get(pos)!.slice(0, 40);
@@ -64,6 +84,7 @@ export default async function BoardPage({ params }: { params: Promise<{ leagueId
                       <tr key={row.playerId} className={tierBreak ? 'border-t-2 border-zinc-600' : i > 0 ? 'border-t border-zinc-800/60' : ''}>
                         <td className="w-7 px-2 py-0.5 text-right text-zinc-600">{row.posRank}</td>
                         <td className="max-w-[150px] truncate py-0.5">
+                          {mine.has(row.playerId) && <span className="mr-1 text-emerald-400">◆</span>}
                           {row.name} <span className="text-zinc-600">{row.team ?? ''}</span>
                         </td>
                         <td className="px-1 py-0.5 text-right text-zinc-400">{row.points.toFixed(0)}</td>

@@ -109,11 +109,27 @@ export function boardRows(leagueId: string): BoardRow[] {
   });
 }
 
-export function leagueMeta(leagueId: string): { name: string; isDynasty: boolean } | null {
+export function leagueMeta(leagueId: string): { name: string; isDynasty: boolean; isKeeper: boolean } | null {
   const row = db.get<{ name: string; type: number | null }>(
     sql`select name, cast(json_extract(settings, '$.type') as integer) as type from leagues where league_id = ${leagueId}`,
   );
-  return row ? { name: row.name, isDynasty: row.type === 2 } : null;
+  return row ? { name: row.name, isDynasty: row.type === 2, isKeeper: row.type === 1 } : null;
+}
+
+// Casey's roster in this league — powers "mine" badges and the keeper shortlist.
+export function myRosterIds(leagueId: string, myUserId: string): Set<string> {
+  const row = db.get<{ player_ids: string | null }>(
+    sql`select player_ids from rosters where league_id = ${leagueId} and owner_id = ${myUserId}`,
+  );
+  return new Set(row?.player_ids ? (JSON.parse(row.player_ids) as string[]) : []);
+}
+
+// Rookie pool for dynasty rookie auctions: zero years experience.
+export function rookieIds(): Set<string> {
+  const rows = db.all<{ sleeper_id: string }>(
+    sql`select sleeper_id from players where cast(json_extract(meta, '$.years_exp') as integer) = 0`,
+  );
+  return new Set(rows.map((r) => r.sleeper_id));
 }
 
 export function leagueName(leagueId: string): string | null {

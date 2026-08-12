@@ -113,6 +113,10 @@ export const transactions = sqliteTable(
     adds: text('adds', { mode: 'json' }).$type<Record<string, number>>(),
     drops: text('drops', { mode: 'json' }).$type<Record<string, number>>(),
     faabBid: integer('faab_bid'),
+    tradedPicks: text('traded_picks', { mode: 'json' }).$type<
+      Array<{ season: string; round: number; roster_id: number; previous_owner_id: number; owner_id: number }>
+    >(),
+    waiverBudget: text('waiver_budget', { mode: 'json' }).$type<Array<{ sender: number; receiver: number; amount: number }>>(),
     metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
     createdAtMs: integer('created_at_ms'),
     fetchedAt: integer('fetched_at').notNull(),
@@ -129,6 +133,7 @@ export const drafts = sqliteTable('drafts', {
   startTimeMs: integer('start_time_ms'),
   settings: text('settings', { mode: 'json' }).$type<Record<string, unknown>>(),
   metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
+  draftOrder: text('draft_order', { mode: 'json' }).$type<Record<string, number>>(),
   fetchedAt: integer('fetched_at').notNull(),
 });
 
@@ -141,6 +146,7 @@ export const draftPicks = sqliteTable(
     draftSlot: integer('draft_slot'),
     rosterId: integer('roster_id'),
     playerId: text('player_id'),
+    pickedBy: text('picked_by'),
     amount: integer('amount'),
     isKeeper: integer('is_keeper', { mode: 'boolean' }),
     metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
