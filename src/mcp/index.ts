@@ -9,6 +9,7 @@ import { boardRows, leagueMeta, myRosterIds } from '@/services/board';
 import { getLeagueIntel } from '@/services/intel';
 import { marketDeltas, playerNews } from '@/services/player';
 import { evaluateTrade, findTrades, leagueRostersDetailed, parsePickLabel, resolvePlayerOnRoster, type TradeAsset } from '@/services/trade';
+import { streamsReport } from '@/services/streams';
 import { SLEEPER_USER_ID } from '@/config';
 
 // Read-only MCP tools over the same services layer as the web UI.
@@ -90,6 +91,20 @@ const TOOLS = [
         league: { type: 'string' },
         position: { type: 'string', description: 'Optional: upgrade target QB/RB/WR/TE/K/DEF/DL/LB/DB' },
         stance: { type: 'string', description: 'any (default) | consolidate (send 2 get 1) | spread (send 1 get 2)' },
+      },
+      required: ['league'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'stream_or_hold',
+    description:
+      "Stream-vs-hold analysis for one league: per-position streamability (weekly top-2 free-agent baseline vs replacement level — 'streamable' means the wire keeps pace, so don't pay for bench depth there) and hold/coin-flip/stream verdicts for every player on my roster (margin = player's weekly avg vs the wire baseline; starts = weeks in my optimal lineup). Stream verdicts mean the roster spot is worth more as a lottery stash. Especially relevant for IDP in Squidward.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        league: { type: 'string', description: 'League name (partial ok) or league_id' },
+        position: { type: 'string', description: 'Optional filter: QB/RB/WR/TE/K/DEF/DL/LB/DB' },
       },
       required: ['league'],
       additionalProperties: false,
@@ -332,6 +347,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             stance: a?.stance ? (String(a.stance) as 'any' | 'consolidate' | 'spread') : undefined,
           })
         : { error: `no league matching "${String(a?.league ?? '')}"` };
+      break;
+    }
+    case 'stream_or_hold': {
+      const a = args as { league?: unknown; position?: unknown };
+      const leagueId = resolveLeagueId(String(a?.league ?? ''));
+      if (!leagueId) {
+        result = { error: `no league matching "${String(a?.league ?? '')}"` };
+        break;
+      }
+      const report = streamsReport(leagueId);
+      if ('error' in report) {
+        result = report;
+        break;
+      }
+      const pos = a?.position ? String(a.position).toUpperCase() : null;
+      result = {
+        league: report.league,
+        positions: pos ? report.positions.filter((p) => p.pos === pos) : report.positions,
+        myVerdicts: (pos ? report.myVerdicts.filter((v) => v.pos === pos) : report.myVerdicts).map((v) => ({
+          name: v.name,
+          pos: v.pos,
+          starts: v.starts,
+          avgPpw: Math.round(v.avgPts * 10) / 10,
+          wirePpw: Math.round(v.baselineAvg * 10) / 10,
+          margin: Math.round(v.margin * 10) / 10,
+          verdict: v.verdict,
+          taxi: v.taxi || undefined,
+          reserve: v.reserve || undefined,
+        })),
+      };
       break;
     }
     case 'get_source_health':

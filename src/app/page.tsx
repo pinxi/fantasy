@@ -60,6 +60,9 @@ export default function Home() {
                   trade →
                 </Link>
               )}
+              <Link className="text-cyan-400 hover:underline" href={`/league/${l.leagueId}/streams`}>
+                streams →
+              </Link>
               <a className="text-zinc-500 hover:underline" href={`/league/${l.leagueId}/board.csv`}>
                 csv
               </a>
