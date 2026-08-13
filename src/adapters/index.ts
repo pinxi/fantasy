@@ -8,6 +8,7 @@ import { sleeperGqlJobs } from './sleeper-gql';
 import { footballguysJobs } from './footballguys';
 import { draftsharksJobs } from './draftsharks';
 import { subvertadownJobs } from './subvertadown';
+import { nflverseJobs } from './nflverse';
 import { valuationJobs } from '@/valuation/job';
 
 export const allJobs: JobSpec[] = [
@@ -20,5 +21,6 @@ export const allJobs: JobSpec[] = [
   ...footballguysJobs,
   ...draftsharksJobs,
   ...subvertadownJobs,
+  ...nflverseJobs,
   ...valuationJobs,
 ];

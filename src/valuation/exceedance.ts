@@ -185,8 +185,7 @@ export function buildGraftTables(): GraftTables {
     }
   }
 
-  // KR rates from 2025: shrunk toward zero by sample size. Limitation (accepted
-  // for v1): rookies and new-role returners are invisible until they show usage.
+  // KR rates from 2025 actuals, shrunk toward zero by sample size.
   const krRates = new Map<string, number>();
   for (const [key, ps] of bySeasonPlayer) {
     const [season, playerId] = key.split(':') as [string, string];
@@ -196,6 +195,24 @@ export function buildGraftTables(): GraftTables {
     const n = ps.weeks.length;
     const shrunk = (totalKr / n) * (n / (n + 4));
     if (shrunk >= 3) krRates.set(playerId, shrunk);
+  }
+
+  // Rookie/new-returner fix: players listed at KR/PR on the latest depth charts
+  // but with no return history get positional prior rates (KR1 = upper-quartile
+  // of observed rates, KR2 = half). Best-effort — clubs vary in publishing
+  // special-teams depth rows; veterans keep their EB rates.
+  const roleRows = db.all<{ sleeper_id: string | null; depth_rank: number | null }>(sql`
+    select m.sleeper_id, dc.depth_rank
+    from depth_charts dc
+    left join player_id_map m on m.source = 'gsis' and m.source_id = dc.gsis_id
+    where upper(coalesce(dc.depth_position, '')) in ('KR', 'PR')
+      and dc.season = (select max(season) from depth_charts)
+  `);
+  const observed = [...krRates.values()].sort((a, b) => a - b);
+  const kr1Prior = observed.length > 0 ? observed[Math.floor(observed.length * 0.75)]! : 15;
+  for (const row of roleRows) {
+    if (!row.sleeper_id || krRates.has(row.sleeper_id)) continue;
+    krRates.set(row.sleeper_id, (row.depth_rank ?? 2) <= 1 ? kr1Prior : kr1Prior / 2);
   }
 
   cached = { exceedance, tdShares, krRates, fdRates };
