@@ -5,6 +5,9 @@ import { fantasycalcJobs } from './fantasycalc';
 import { ktcJobs } from './ktc';
 import { fantasyprosJobs } from './fantasypros';
 import { sleeperGqlJobs } from './sleeper-gql';
+import { footballguysJobs } from './footballguys';
+import { draftsharksJobs } from './draftsharks';
+import { subvertadownJobs } from './subvertadown';
 import { valuationJobs } from '@/valuation/job';
 
 export const allJobs: JobSpec[] = [
@@ -14,5 +17,8 @@ export const allJobs: JobSpec[] = [
   ...fantasycalcJobs,
   ...ktcJobs,
   ...fantasyprosJobs,
+  ...footballguysJobs,
+  ...draftsharksJobs,
+  ...subvertadownJobs,
   ...valuationJobs,
 ];

@@ -14,6 +14,9 @@ const optionalString = (schema: z.ZodString) =>
 const Env = z.object({
   SLEEPER_JWT: optionalString(z.string().min(20)),
   FANTASYPROS_API_KEY: optionalString(z.string().min(8)),
+  FBG_COOKIE: optionalString(z.string().min(20)),
+  DS_COOKIE: optionalString(z.string().min(20)),
+  SUBVERTADOWN_COOKIE: optionalString(z.string().min(20)),
   DISCORD_WEBHOOK_URL: optionalString(z.string().url()),
   DATA_DIR: z.string().default('./data'),
 });

@@ -11,6 +11,9 @@ export type SourceName =
   | 'fantasycalc'
   | 'ktc'
   | 'fantasypros'
+  | 'footballguys'
+  | 'draftsharks'
+  | 'subvertadown'
   | 'nflverse'
   | 'valuation';
 
