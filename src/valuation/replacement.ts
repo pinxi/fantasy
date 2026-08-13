@@ -3,7 +3,7 @@
 // replacement level for a position is the best player left unassigned. This is
 // what makes superflex QB inflation and 3-FLEX depth emerge naturally.
 
-const FLEX_MAP: Record<string, string[]> = {
+export const FLEX_MAP: Record<string, string[]> = {
   FLEX: ['RB', 'WR', 'TE'],
   WRRB_FLEX: ['WR', 'RB'],
   WRRBTE_FLEX: ['RB', 'WR', 'TE'],

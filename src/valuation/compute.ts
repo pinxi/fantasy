@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { leagueValues, valuationRuns } from '@/db/schema';
+import { leagueValues, leagueWeeklyPoints, valuationRuns } from '@/db/schema';
 import { componentBuckets, scoreBreakdown, scoreStatLine, type ScoringSettings, type StatLine } from '@/scoring/engine';
 import { latestWeekProjections } from '@/services/projections';
 import { SEASON } from '@/config';
@@ -46,11 +46,11 @@ export interface GraftedWeek {
 
 export type GraftedWeeks = Map<number, Map<string, GraftedWeek>>;
 
-// Grafting is league-independent — build the grafted weekly lines once and
-// re-score them per league. Turns a 9-league run from 9x work into 1x + 9
-// cheap scoring passes.
-export function buildGraftedWeeks(): GraftedWeeks {
-  const playerPos = new Map(
+// Canonical player -> normalized position map (players.pos with
+// fantasy_positions fallback). Shared by valuation and the trade lab so
+// lineup positions always match valuation exactly.
+export function buildPlayerPosMap(): Map<string, string | null> {
+  return new Map(
     db
       .all<{ sleeper_id: string; pos: string | null; meta: string | null }>(sql`select sleeper_id, pos, meta from players`)
       .map((r) => {
@@ -58,6 +58,13 @@ export function buildGraftedWeeks(): GraftedWeeks {
         return [r.sleeper_id, normalizePos(r.pos) ?? normalizePos(meta.fantasy_positions?.[0])] as const;
       }),
   );
+}
+
+// Grafting is league-independent — build the grafted weekly lines once and
+// re-score them per league. Turns a 9-league run from 9x work into 1x + 9
+// cheap scoring passes.
+export function buildGraftedWeeks(): GraftedWeeks {
+  const playerPos = buildPlayerPosMap();
   const tables = graftTables();
   const weeks: GraftedWeeks = new Map();
   for (let week = 1; week <= 18; week++) {
@@ -89,11 +96,12 @@ export function runValuation(leagueId: string, shared?: GraftedWeeks): Valuation
   const graftedWeeks = shared ?? buildGraftedWeeks();
   const posByPlayer = new Map<string, string>();
   const acc = new Map<string, PlayerAccumulator>();
+  const weeklyPts = new Map<string, Array<[week: number, pts: number]>>();
 
-  for (const weekMap of graftedWeeks.values()) {
+  for (const [week, weekMap] of graftedWeeks) {
     for (const [playerId, { grafted, addedBonusKeys, addedKrKeys, pos }] of weekMap) {
       const points = scoreStatLine(grafted, scoring);
-      if (points === 0) continue;
+      if (points === 0) continue; // absent row = 0 downstream (encodes byes)
       posByPlayer.set(playerId, pos);
       let entry = acc.get(playerId);
       if (!entry) acc.set(playerId, (entry = { points: 0, seasonLine: {}, graftBonusPts: 0, graftKrPts: 0 }));
@@ -101,6 +109,9 @@ export function runValuation(leagueId: string, shared?: GraftedWeeks): Valuation
       addLine(entry.seasonLine, grafted);
       for (const key of addedBonusKeys) entry.graftBonusPts += (grafted[key] ?? 0) * (scoring[key] ?? 0);
       for (const key of addedKrKeys) entry.graftKrPts += (grafted[key] ?? 0) * (scoring[key] ?? 0);
+      let weeks = weeklyPts.get(playerId);
+      if (!weeks) weeklyPts.set(playerId, (weeks = []));
+      weeks.push([week, points]);
     }
   }
 
@@ -176,7 +187,30 @@ export function runValuation(leagueId: string, shared?: GraftedWeeks): Valuation
   const runId = runRow[0]!.id;
 
   const top = [...withVorp].sort((a, b) => b.points - a.points).slice(0, 600);
+
+  // Weekly rows persist for top-600 ∪ everyone rostered in this league (covers
+  // taxi/deep-IDP players the top-600 cut would drop).
+  const persistIds = new Set(top.map((p) => p.playerId));
+  const rosterRows = db.all<{ player_ids: string | null }>(sql`select player_ids from rosters where league_id = ${leagueId}`);
+  for (const row of rosterRows) {
+    for (const id of row.player_ids ? (JSON.parse(row.player_ids) as string[]) : []) {
+      if (weeklyPts.has(id)) persistIds.add(id);
+    }
+  }
+
   db.transaction((tx) => {
+    for (const playerId of persistIds) {
+      for (const [week, pts] of weeklyPts.get(playerId) ?? []) {
+        tx.insert(leagueWeeklyPoints).values({ runId, playerId, week, pts }).onConflictDoNothing().run();
+      }
+    }
+    // Prune weekly rows beyond this league's last 3 runs.
+    tx.run(sql`
+      delete from league_weekly_points where run_id in (
+        select id from valuation_runs where league_id = ${leagueId}
+        and id not in (select id from valuation_runs where league_id = ${leagueId} order by id desc limit 3)
+      )
+    `);
     for (const p of top) {
       const entry = acc.get(p.playerId)!;
       const buckets = componentBuckets(scoreBreakdown(entry.seasonLine, scoring));

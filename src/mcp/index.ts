@@ -8,6 +8,7 @@ import { listLeagues, sourceHealthStrip } from '@/services/leagues';
 import { boardRows, leagueMeta, myRosterIds } from '@/services/board';
 import { getLeagueIntel } from '@/services/intel';
 import { marketDeltas, playerNews } from '@/services/player';
+import { evaluateTrade, findTrades, leagueRostersDetailed, parsePickLabel, resolvePlayerOnRoster, type TradeAsset } from '@/services/trade';
 import { SLEEPER_USER_ID } from '@/config';
 
 // Read-only MCP tools over the same services layer as the web UI.
@@ -58,6 +59,37 @@ const TOOLS = [
         league: { type: 'string', description: 'League name (partial ok) or league_id' },
         sort: { type: 'string', description: 'buy (default) | sell | points' },
         limit: { type: 'number', description: 'Max rows (default 40)' },
+      },
+      required: ['league'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'evaluate_trade',
+    description:
+      'Evaluate a trade in one league across three horizons: rest-of-season optimal-lineup points delta for BOTH sides (league-scored weekly projections, exact lineup optimizer), playoff-weighted delta (weeks 15-17 count 2x), and market-value delta (format-matched; single source per evaluation — fantasycalc, or ktc when dynasty picks like "2027 mid 1st" are included). give = assets leaving my roster, receive = assets arriving. Small deltas honestly report "even". Includes per-side lineup before/after and warning chips (taxi/IR, startable-depth drops, deadline, unfillable slots).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        league: { type: 'string', description: 'League name (partial ok) or league_id' },
+        give: { type: 'array', items: { type: 'string' }, description: 'Player names or pick labels I send' },
+        receive: { type: 'array', items: { type: 'string' }, description: 'Player names or pick labels I get' },
+        counterparty: { type: 'string', description: 'Manager team/display name; inferred from receive players when omitted' },
+      },
+      required: ['league', 'give', 'receive'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'find_trades',
+    description:
+      "Scan one league for realistic 1-for-1 and 2-for-1 trades that improve my optimal lineup, ranked by my ROS gain x acceptance plausibility (their side judged by public market values + manager tendencies from league history: positional flow, past partners, trade frequency; never proposes fleecings). Returns both sides' deltas with human-readable reasons.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        league: { type: 'string' },
+        position: { type: 'string', description: 'Optional: upgrade target QB/RB/WR/TE/K/DEF/DL/LB/DB' },
+        stance: { type: 'string', description: 'any (default) | consolidate (send 2 get 1) | spread (send 1 get 2)' },
       },
       required: ['league'],
       additionalProperties: false,
@@ -217,7 +249,51 @@ function getDraftBoard(league: string, position?: string, limit = 25): unknown {
   return { league: meta?.name, isDynasty: meta?.isDynasty ?? false, board: Object.fromEntries(byPos) };
 }
 
-server.setRequestHandler(CallToolRequestSchema, (request) => {
+async function mcpEvaluateTrade(leagueQuery: string, giveNames: string[], receiveNames: string[], counterparty?: string): Promise<unknown> {
+  const leagueId = resolveLeagueId(leagueQuery);
+  if (!leagueId) return { error: `no league matching "${leagueQuery}"` };
+
+  const resolveAssets = (names: string[], mustBeMine: boolean): TradeAsset[] | { error: string; candidates?: string[] } => {
+    const assets: TradeAsset[] = [];
+    for (const raw of names) {
+      const pick = parsePickLabel(raw);
+      if (pick) {
+        assets.push({ kind: 'pick', label: pick });
+        continue;
+      }
+      const resolved = resolvePlayerOnRoster(leagueId, raw);
+      if ('error' in resolved) return resolved;
+      void mustBeMine; // ownership is validated inside evaluateTrade
+      assets.push({ kind: 'player', playerId: resolved.playerId });
+    }
+    return assets;
+  };
+
+  const give = resolveAssets(giveNames, true);
+  if ('error' in give) return give;
+  const receive = resolveAssets(receiveNames, false);
+  if ('error' in receive) return receive;
+
+  const rosters = leagueRostersDetailed(leagueId);
+  let counterpartyRosterId: number | null = null;
+  if (counterparty) {
+    const lower = counterparty.toLowerCase();
+    counterpartyRosterId = rosters.find((r) => !r.isMe && r.ownerName.toLowerCase().includes(lower))?.rosterId ?? null;
+    if (counterpartyRosterId === null) return { error: `no manager matching "${counterparty}"` };
+  } else {
+    const rosterIds = new Set<number>();
+    for (const asset of receive) {
+      if (asset.kind !== 'player') continue;
+      const owner = rosters.find((r) => r.players.some((p) => p.playerId === asset.playerId));
+      if (owner && !owner.isMe) rosterIds.add(owner.rosterId);
+    }
+    if (rosterIds.size !== 1) return { error: 'could not infer a single counterparty — pass counterparty explicitly' };
+    counterpartyRosterId = [...rosterIds][0]!;
+  }
+  return evaluateTrade({ leagueId, counterpartyRosterId, give, receive });
+}
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   let result: unknown;
   switch (name) {
@@ -235,6 +311,27 @@ server.setRequestHandler(CallToolRequestSchema, (request) => {
     case 'get_edge_board': {
       const a = args as { league?: unknown; sort?: unknown; limit?: unknown };
       result = getEdgeBoard(String(a?.league ?? ''), a?.sort ? String(a.sort) : 'buy', typeof a?.limit === 'number' ? a.limit : 40);
+      break;
+    }
+    case 'evaluate_trade': {
+      const a = args as { league?: unknown; give?: unknown; receive?: unknown; counterparty?: unknown };
+      result = await mcpEvaluateTrade(
+        String(a?.league ?? ''),
+        Array.isArray(a?.give) ? a.give.map(String) : [],
+        Array.isArray(a?.receive) ? a.receive.map(String) : [],
+        a?.counterparty ? String(a.counterparty) : undefined,
+      );
+      break;
+    }
+    case 'find_trades': {
+      const a = args as { league?: unknown; position?: unknown; stance?: unknown };
+      const leagueId = resolveLeagueId(String(a?.league ?? ''));
+      result = leagueId
+        ? await findTrades(leagueId, {
+            position: a?.position ? String(a.position) : undefined,
+            stance: a?.stance ? (String(a.stance) as 'any' | 'consolidate' | 'spread') : undefined,
+          })
+        : { error: `no league matching "${String(a?.league ?? '')}"` };
       break;
     }
     case 'get_source_health':

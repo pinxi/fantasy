@@ -337,6 +337,22 @@ export const leagueValues = sqliteTable(
   (t) => [primaryKey({ columns: [t.runId, t.playerId] }), index('lv_league').on(t.leagueId, t.runId)],
 );
 
+// Weekly league-scored points per player, persisted at valuation time — the
+// trade lab reads these instantly instead of recomputing grafted weeks (~10s).
+// Invariant: SUM(pts) over weeks == league_values.points for the same
+// (run_id, player_id). Also the Monte Carlo seam (samples/quantiles can key
+// off the same rows later) and Phase 4's streamer-baseline raw material.
+export const leagueWeeklyPoints = sqliteTable(
+  'league_weekly_points',
+  {
+    runId: integer('run_id').notNull(),
+    playerId: text('player_id').notNull(),
+    week: integer('week').notNull(),
+    pts: real('pts').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.playerId, t.week] })],
+);
+
 export const jobRuns = sqliteTable(
   'job_runs',
   {

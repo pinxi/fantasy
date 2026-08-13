@@ -10,6 +10,7 @@ export interface LeagueSummary {
   draftType: string | null;
   draftStatus: string | null;
   draftAt: number | null;
+  tradesDisabled: boolean;
 }
 
 export function listLeagues(): LeagueSummary[] {
@@ -53,6 +54,7 @@ export function listLeagues(): LeagueSummary[] {
       draftType: r.draft_type,
       draftStatus: r.draft_status,
       draftAt: r.draft_at,
+      tradesDisabled: settings.disable_trades === 1,
     };
   });
 }

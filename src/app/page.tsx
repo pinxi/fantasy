@@ -55,6 +55,11 @@ export default function Home() {
               <Link className="text-amber-400 hover:underline" href={`/league/${l.leagueId}/managers`}>
                 managers →
               </Link>
+              {!l.tradesDisabled && (
+                <Link className="text-violet-400 hover:underline" href={`/league/${l.leagueId}/trade`}>
+                  trade →
+                </Link>
+              )}
               <a className="text-zinc-500 hover:underline" href={`/league/${l.leagueId}/board.csv`}>
                 csv
               </a>
