@@ -191,3 +191,38 @@ export function percentile(sorted: Float64Array, p: number): number {
   const frac = idx - lo;
   return sorted[lo]! * (1 - frac) + sorted[hi]! * frac;
 }
+
+// ---------- inverse-CDF resampling from persisted quantiles ----------
+// Consumers (week page, team pages, freeze job, season sim) draw from the
+// stored p10/p25/median/p75/p90 rather than re-running the comp-pool engine.
+
+export interface PlayerWeekDist {
+  pts: number;
+  p10: number | null;
+  p25: number | null;
+  p75: number | null;
+  p90: number | null;
+}
+
+// Piecewise-linear inverse CDF through (0.10,p10)(0.25,p25)(0.50,pts)(0.75,p75)(0.90,p90),
+// with linear tail extensions, clamped at zero. Degenerates to the constant
+// mean when quantiles are missing.
+export function invCdfSampler(d: PlayerWeekDist): (u: number) => number {
+  if (d.p10 === null || d.p25 === null || d.p75 === null || d.p90 === null) {
+    return () => d.pts;
+  }
+  const lo = Math.max(0, d.p10 - (d.p25 - d.p10) * 1.5);
+  const hi = d.p90 + (d.p90 - d.p75) * 1.5;
+  const xs = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1];
+  const ys = [lo, d.p10, d.p25, d.pts, d.p75, d.p90, hi];
+  return (u: number) => {
+    const x = Math.min(Math.max(u, 0), 1);
+    for (let i = 1; i < xs.length; i++) {
+      if (x <= xs[i]!) {
+        const t = (x - xs[i - 1]!) / (xs[i]! - xs[i - 1]!);
+        return Math.max(ys[i - 1]! + t * (ys[i]! - ys[i - 1]!), 0);
+      }
+    }
+    return Math.max(hi, 0);
+  };
+}

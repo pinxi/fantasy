@@ -1,5 +1,6 @@
 import type { JobReport, JobSpec } from '@/adapters/types';
 import { runAllValuations } from './compute';
+import { freezeAllLeagues } from './freeze';
 
 // Nightly re-valuation after the morning ingestion sweep.
 const nightlyJob: JobSpec = {
@@ -16,4 +17,27 @@ const nightlyJob: JobSpec = {
   },
 };
 
-export const valuationJobs: JobSpec[] = [nightlyJob];
+// Thursday-morning freeze: lock the week's prediction of record before any
+// games kick off. First freeze wins (re-runs skip); catch-up covers a slept
+// Thursday, at the cost of a later — timestamped — freeze.
+const freezeJob: JobSpec = {
+  name: 'valuation.freeze_week',
+  source: 'valuation',
+  cadence: { cron: '0 9 * * 4', catchUp: true, staleAfterHours: 24 * 8 },
+  enabled: (clock) => clock.seasonType === 'regular',
+  timeoutMs: 300_000,
+  async run(ctx): Promise<JobReport> {
+    const results = freezeAllLeagues(ctx.clock.week);
+    const warnings: string[] = [];
+    let written = 0;
+    for (const r of results) {
+      if (r.skipped) continue;
+      written += r.players + r.teams;
+      ctx.log.info({ league: r.leagueId, players: r.players, teams: r.teams }, 'frozen');
+    }
+    if (results.every((r) => r.skipped)) warnings.push(`week ${ctx.clock.week}: nothing to freeze (already frozen or no weekly rows)`);
+    return { fetched: results.length, written, warnings };
+  },
+};
+
+export const valuationJobs: JobSpec[] = [nightlyJob, freezeJob];

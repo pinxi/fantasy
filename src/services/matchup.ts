@@ -5,7 +5,7 @@ import { getNflClock } from '@/lib/nfl-clock';
 import { buildPlayerPosMap } from '@/valuation/compute';
 import { optimalWeekLineup, type LineupPlayer } from '@/valuation/lineup';
 import { FLEX_MAP } from '@/valuation/replacement';
-import { seededRng } from '@/valuation/samples';
+import { invCdfSampler, seededRng, type PlayerWeekDist } from '@/valuation/samples';
 import { leagueRostersDetailed, leagueShape, type RosterDetail } from './trade';
 
 // Weekly command center: start/sit by WIN PROBABILITY, not expected points.
@@ -16,37 +16,6 @@ import { leagueRostersDetailed, leagueShape, type RosterDetail } from './trade';
 // swaps where points and win-odds disagree.
 
 const DRAWS = 400;
-
-export interface PlayerWeekDist {
-  pts: number;
-  p10: number | null;
-  p25: number | null;
-  p75: number | null;
-  p90: number | null;
-}
-
-// Piecewise-linear inverse CDF through (0.10,p10)(0.25,p25)(0.50,pts)(0.75,p75)(0.90,p90),
-// with linear tail extensions, clamped at zero. Degenerates to the constant
-// mean when quantiles are missing.
-export function invCdfSampler(d: PlayerWeekDist): (u: number) => number {
-  if (d.p10 === null || d.p25 === null || d.p75 === null || d.p90 === null) {
-    return () => d.pts;
-  }
-  const lo = Math.max(0, d.p10 - (d.p25 - d.p10) * 1.5);
-  const hi = d.p90 + (d.p90 - d.p75) * 1.5;
-  const xs = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1];
-  const ys = [lo, d.p10, d.p25, d.pts, d.p75, d.p90, hi];
-  return (u: number) => {
-    const x = Math.min(Math.max(u, 0), 1);
-    for (let i = 1; i < xs.length; i++) {
-      if (x <= xs[i]!) {
-        const t = (x - xs[i - 1]!) / (xs[i]! - xs[i - 1]!);
-        return Math.max(ys[i - 1]! + t * (ys[i]! - ys[i - 1]!), 0);
-      }
-    }
-    return Math.max(hi, 0);
-  };
-}
 
 interface WeekQuantiles {
   runId: number;

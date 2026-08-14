@@ -43,6 +43,13 @@
       "when": 1786727343965,
       "tag": "0005_bitter_cyclops",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786743474633,
+      "tag": "0006_wise_mimic",
+      "breakpoints": true
     }
   ]
 }

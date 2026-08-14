@@ -459,6 +459,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           luckPp: s.luckDelta !== null ? Math.round(s.luckDelta * 100) : null,
         })),
         h2hAllTime: d.history.h2h.map((h) => ({ vs: h.name, record: `${h.wins}-${h.losses}${h.ties ? `-${h.ties}` : ''}` })),
+        predictionVsActual:
+          d.accuracy.length > 0
+            ? d.accuracy.map((x) => ({
+                week: x.week,
+                predicted: round1(x.predicted),
+                actual: x.actual !== null ? round1(x.actual) : null,
+                miss: x.err !== null ? round1(x.err) : null,
+              }))
+            : 'accrues from week 1 (Thursday freeze job locks each week’s prediction of record)',
+        calibration:
+          d.calibration.scoredWeeks > 0
+            ? {
+                scoredTeamWeeks: d.calibration.scoredWeeks,
+                meanBias: round1(d.calibration.meanBias!),
+                mae: round1(d.calibration.mae!),
+                bandCoveragePct: Math.round(d.calibration.bandCoverage! * 100),
+              }
+            : undefined,
       };
       break;
     }

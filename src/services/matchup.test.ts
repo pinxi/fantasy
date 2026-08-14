@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { seededRng } from '@/valuation/samples';
-import { invCdfSampler, type PlayerWeekDist } from './matchup';
+import { invCdfSampler, seededRng, type PlayerWeekDist } from '@/valuation/samples';
 
 const DIST: PlayerWeekDist = { pts: 12, p10: 5, p25: 8, p75: 16, p90: 21 };
 

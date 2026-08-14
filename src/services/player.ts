@@ -177,10 +177,12 @@ export interface WeeklyLine {
   actual: number | null;
   p10: number | null;
   p90: number | null;
+  frozen: boolean; // projected/bands are the pre-game freeze, not the latest recompute
 }
 
-// Weekly league-scored projections for ONE player. Prefers the persisted
-// valuation rows (which carry resampled p10/p90 bands); falls back to live
+// Weekly league-scored projections for ONE player. Weeks with a frozen
+// prediction show the pre-game number of record (honest for proj-vs-actual);
+// other weeks use the latest persisted valuation rows, falling back to live
 // grafted computation for players outside the persisted set.
 export function weeklyLines(playerId: string, leagueId: string): WeeklyLine[] {
   const league = db.get<{ scoring_settings: string }>(sql`select scoring_settings from leagues where league_id = ${leagueId}`);
@@ -195,19 +197,31 @@ export function weeklyLines(playerId: string, leagueId: string): WeeklyLine[] {
       .map((r) => [r.week, scoreStatLine(JSON.parse(r.stats) as StatLine, scoring)]),
   );
 
+  const frozen = new Map(
+    db
+      .all<{ week: number; pts: number; p10: number | null; p90: number | null }>(
+        sql`select week, pts, p10, p90 from frozen_predictions where league_id = ${leagueId} and season = ${SEASON} and player_id = ${playerId}`,
+      )
+      .map((r) => [r.week, r]),
+  );
+
   const stored = db.all<{ week: number; pts: number; p10: number | null; p90: number | null }>(sql`
     select week, pts, p10, p90 from league_weekly_points
     where run_id = (select max(id) from valuation_runs where league_id = ${leagueId}) and player_id = ${playerId}
     order by week
   `);
   if (stored.length > 0) {
-    return stored.map((r) => ({
-      week: r.week,
-      projected: r.pts,
-      actual: actualsForPlayer.get(r.week) ?? null,
-      p10: r.p10,
-      p90: r.p90,
-    }));
+    return stored.map((r) => {
+      const fz = frozen.get(r.week);
+      return {
+        week: r.week,
+        projected: fz?.pts ?? r.pts,
+        actual: actualsForPlayer.get(r.week) ?? null,
+        p10: fz ? fz.p10 : r.p10,
+        p90: fz ? fz.p90 : r.p90,
+        frozen: fz !== undefined,
+      };
+    });
   }
 
   const header = playerHeader(playerId);
@@ -240,6 +254,7 @@ export function weeklyLines(playerId: string, leagueId: string): WeeklyLine[] {
       actual: actualStats ? scoreStatLine(actualStats, scoring) : null,
       p10: null,
       p90: null,
+      frozen: false,
     };
   });
 }

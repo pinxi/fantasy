@@ -18,18 +18,30 @@ const POS_COLORS: Record<string, string> = {
 const SEASON_COLORS = ['#34d399', '#38bdf8', '#a78bfa', '#f59e0b', '#71717a'];
 
 function WeeklyBandChart({ d }: { d: TeamDetail }) {
-  const s = d.weeklySeries;
+  // Past weeks show the FROZEN prediction of record with the actual as a dot;
+  // future weeks show the latest prediction. One continuous band.
+  const frozenWeeks = new Set(d.accuracy.map((a) => a.week));
+  const s = [
+    ...d.accuracy.map((a) => ({ week: a.week, mean: a.predicted, p10: a.p10 ?? a.predicted, p90: a.p90 ?? a.predicted, actual: a.actual })),
+    ...d.weeklySeries.filter((w) => !frozenWeeks.has(w.week)).map((w) => ({ ...w, actual: null as number | null })),
+  ].sort((a, b) => a.week - b.week);
   if (s.length === 0) return null;
-  const max = Math.max(...s.map((w) => w.p90), 1);
-  const min = Math.min(...s.map((w) => w.p10));
+  const values = s.flatMap((w) => [w.p90, w.p10, w.actual ?? w.mean]);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values);
   const pad = Math.max((max - min) * 0.1, 5);
   const yOf = (v: number) => 130 - ((v - min + pad) / (max - min + 2 * pad)) * 115;
   const xOf = (i: number) => 30 + (s.length > 1 ? (i / (s.length - 1)) * 600 : 300);
-  const bandPts = [...s.map((w, i) => `${xOf(i)},${yOf(w.p90)}`), ...[...s].reverse().map((w) => `${xOf(s.indexOf(w))},${yOf(w.p10)}`)].join(' ');
+  const bandPts = [...s.map((w, i) => `${xOf(i)},${yOf(w.p90)}`), ...s.map((w, i) => `${xOf(i)},${yOf(w.p10)}`).reverse()].join(' ');
   return (
     <svg viewBox="0 0 660 150" className="w-full">
       <polygon points={bandPts} fill="#3f3f46" opacity="0.35" />
       <polyline points={s.map((w, i) => `${xOf(i)},${yOf(w.mean)}`).join(' ')} fill="none" stroke="#34d399" strokeWidth="2" />
+      {s.map((w, i) =>
+        w.actual !== null ? (
+          <circle key={`a${w.week}`} cx={xOf(i)} cy={yOf(w.actual)} r="3" fill={w.actual >= w.mean ? '#34d399' : '#f87171'} stroke="#18181b" strokeWidth="1" />
+        ) : null,
+      )}
       {s.map((w, i) => (
         <text key={w.week} x={xOf(i)} y="146" fill="#52525b" fontSize="9" textAnchor="middle">
           {w.week}
@@ -370,6 +382,56 @@ export default async function TeamPage({
                   roster market value <span className="font-normal text-zinc-600">· current roster priced across the daily archive</span>
                 </div>
                 <MarketTrendChart d={d} />
+              </div>
+              <div className="rounded border border-zinc-800 p-3">
+                <div className="mb-2 text-[11px] font-bold text-zinc-300">
+                  prediction vs actual <span className="font-normal text-zinc-600">· scored against the frozen pre-game numbers</span>
+                </div>
+                {d.accuracy.length === 0 ? (
+                  <p className="text-[11px] text-zinc-600">
+                    accrues from week 1 — every Thursday the freeze job locks that week's prediction of record; actuals score against it,
+                    never against retro-fitted recomputes
+                  </p>
+                ) : (
+                  <>
+                    <table className="w-full text-[12px]">
+                      <thead>
+                        <tr className="border-b border-zinc-700 text-left text-[11px] text-zinc-500">
+                          <th className="py-1 pr-2 font-normal">wk</th>
+                          <th className="px-2 py-1 text-right font-normal">predicted</th>
+                          <th className="px-2 py-1 text-right font-normal">band</th>
+                          <th className="px-2 py-1 text-right font-normal">actual</th>
+                          <th className="px-2 py-1 text-right font-normal">miss</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {d.accuracy.map((a) => (
+                          <tr key={a.week} className="border-t border-zinc-800/60">
+                            <td className="py-0.5 pr-2 text-zinc-500">w{a.week}</td>
+                            <td className="px-2 py-0.5 text-right font-mono text-zinc-300">{a.predicted.toFixed(1)}</td>
+                            <td className="px-2 py-0.5 text-right font-mono text-[11px] text-zinc-600">
+                              {a.p10 !== null && a.p90 !== null ? `${a.p10.toFixed(0)}–${a.p90.toFixed(0)}` : '·'}
+                            </td>
+                            <td className={`px-2 py-0.5 text-right font-mono ${a.actual === null ? 'text-zinc-700' : a.actual >= a.predicted ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {a.actual !== null ? a.actual.toFixed(1) : '—'}
+                            </td>
+                            <td className="px-2 py-0.5 text-right font-mono text-zinc-500">
+                              {a.err !== null ? `${a.err >= 0 ? '+' : ''}${a.err.toFixed(1)}` : '·'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {d.calibration.scoredWeeks > 0 && (
+                      <p className="mt-2 text-[11px] text-zinc-600">
+                        league calibration over {d.calibration.scoredWeeks} team-weeks: bias{' '}
+                        {d.calibration.meanBias! >= 0 ? '+' : ''}
+                        {d.calibration.meanBias!.toFixed(1)} · mae {d.calibration.mae!.toFixed(1)} · p10–p90 coverage{' '}
+                        {(d.calibration.bandCoverage! * 100).toFixed(0)}% (target ~80%)
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>

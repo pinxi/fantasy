@@ -358,6 +358,44 @@ export const leagueWeeklyPoints = sqliteTable(
   (t) => [primaryKey({ columns: [t.runId, t.playerId, t.week] })],
 );
 
+// Predictions of record: copied from the latest valuation run just before the
+// week's games (Thursday freeze job) and never overwritten or pruned — the
+// honest pre-game numbers that prediction-vs-actual trends score against.
+export const frozenPredictions = sqliteTable(
+  'frozen_predictions',
+  {
+    leagueId: text('league_id').notNull(),
+    season: integer('season').notNull(),
+    week: integer('week').notNull(),
+    playerId: text('player_id').notNull(),
+    pts: real('pts').notNull(),
+    p10: real('p10'),
+    p25: real('p25'),
+    p75: real('p75'),
+    p90: real('p90'),
+    runId: integer('run_id').notNull(),
+    frozenAt: integer('frozen_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.leagueId, t.season, t.week, t.playerId] })],
+);
+
+export const frozenTeamPredictions = sqliteTable(
+  'frozen_team_predictions',
+  {
+    leagueId: text('league_id').notNull(),
+    season: integer('season').notNull(),
+    week: integer('week').notNull(),
+    rosterId: integer('roster_id').notNull(),
+    total: real('total').notNull(),
+    p10: real('p10'),
+    p90: real('p90'),
+    starters: text('starters', { mode: 'json' }).$type<string[]>(),
+    runId: integer('run_id').notNull(),
+    frozenAt: integer('frozen_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.leagueId, t.season, t.week, t.rosterId] })],
+);
+
 export const jobRuns = sqliteTable(
   'job_runs',
   {

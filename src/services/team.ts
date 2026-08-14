@@ -4,8 +4,8 @@ import { SEASON } from '@/config';
 import { getNflClock } from '@/lib/nfl-clock';
 import { buildPlayerPosMap } from '@/valuation/compute';
 import { optimalWeekLineup, type LineupPlayer } from '@/valuation/lineup';
-import { seededRng } from '@/valuation/samples';
-import { invCdfSampler, type PlayerWeekDist } from './matchup';
+import { invCdfSampler, seededRng, type PlayerWeekDist } from '@/valuation/samples';
+import { teamAccuracy, leagueCalibration, type LeagueCalibration, type TeamWeekAccuracy } from './accuracy';
 import { leagueRostersDetailed, leagueShape, marketMap, weeklyPointsForLeague, type RosterDetail } from './trade';
 
 // Team pages: the roster as a portfolio. Predicted side = optimal-lineup
@@ -313,6 +313,8 @@ export interface TeamDetail {
   marketTrend: Array<{ date: string; total: number }>;
   history: { seasons: SeasonHistory[]; h2h: H2hRecord[] };
   fiveYear: { wins: number; losses: number; ties: number; avgPfPerWeek: number | null; avgEfficiency: number | null } | null;
+  accuracy: TeamWeekAccuracy[]; // frozen predicted vs actual, accrues in-season
+  calibration: LeagueCalibration;
 }
 
 export async function teamDetail(leagueId: string, rosterId: number): Promise<TeamDetail | { error: string }> {
@@ -488,6 +490,8 @@ export async function teamDetail(leagueId: string, rosterId: number): Promise<Te
     marketTrend,
     history,
     fiveYear,
+    accuracy: teamAccuracy(leagueId, rosterId),
+    calibration: leagueCalibration(leagueId),
   };
 }
 
