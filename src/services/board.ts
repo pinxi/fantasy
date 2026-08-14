@@ -18,6 +18,8 @@ export interface BoardRow {
   fdPts: number;
   krPts: number;
   bonusPts: number;
+  p10: number | null;
+  p90: number | null;
 }
 
 // Sleeper's week-0 "projection" rows carry ADP for every format — pick the one
@@ -79,9 +81,10 @@ export function boardRows(leagueId: string): BoardRow[] {
     market_value: number | null;
     edge: number | null;
     components: string;
+    quantiles: string | null;
   }>(sql`
     select lv.player_id, p.full_name, p.pos, p.team, lv.points, lv.vorp, lv.tier, lv.pos_rank,
-      lv.auction_dollar, lv.market_value, lv.edge, lv.components
+      lv.auction_dollar, lv.market_value, lv.edge, lv.components, lv.quantiles
     from league_values lv
     join players p on p.sleeper_id = lv.player_id
     where lv.run_id = ${runId}
@@ -89,6 +92,7 @@ export function boardRows(leagueId: string): BoardRow[] {
   `);
   return rows.map((r) => {
     const c = JSON.parse(r.components) as Record<string, number>;
+    const q = r.quantiles ? (JSON.parse(r.quantiles) as { p10?: number; p90?: number }) : null;
     return {
       playerId: r.player_id,
       name: r.full_name,
@@ -105,6 +109,8 @@ export function boardRows(leagueId: string): BoardRow[] {
       fdPts: c.fd ?? 0,
       krPts: c.graft_kr ?? 0,
       bonusPts: (c.graft_bonus ?? 0) + Math.max((c.bonus ?? 0) - (c.graft_bonus ?? 0), 0),
+      p10: q?.p10 ?? null,
+      p90: q?.p90 ?? null,
     };
   });
 }

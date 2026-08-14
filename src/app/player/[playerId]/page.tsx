@@ -190,6 +190,9 @@ export default async function PlayerPage({
               {weekly.map((w) => (
                 <tr key={w.week} className="border-t border-zinc-800/60">
                   <td className="w-10 py-0.5 text-zinc-500">w{w.week}</td>
+                  <td className="w-24 py-0.5 text-right text-[10px] text-zinc-600">
+                    {w.p10 !== null && w.p90 !== null ? `${w.p10.toFixed(0)}–${w.p90.toFixed(0)}` : ''}
+                  </td>
                   <td className="py-0.5 text-right text-zinc-300">{w.projected.toFixed(1)}</td>
                   <td className={`w-16 py-0.5 text-right ${w.actual === null ? 'text-zinc-700' : w.actual >= w.projected ? 'text-emerald-400' : 'text-red-400'}`}>
                     {w.actual !== null ? w.actual.toFixed(1) : '—'}

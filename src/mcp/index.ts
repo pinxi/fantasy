@@ -156,9 +156,10 @@ function getPlayer(name: string): unknown {
     tier: number | null;
     pos_rank: number | null;
     components: string;
+    quantiles: string | null;
   }>(sql`
     with latest as (select league_id, max(id) as run_id from valuation_runs group by league_id)
-    select l.name as league, lv.points, lv.auction_dollar, lv.edge, lv.tier, lv.pos_rank, lv.components
+    select l.name as league, lv.points, lv.auction_dollar, lv.edge, lv.tier, lv.pos_rank, lv.components, lv.quantiles
     from league_values lv
     join latest on latest.run_id = lv.run_id
     join leagues l on l.league_id = lv.league_id
@@ -177,9 +178,12 @@ function getPlayer(name: string): unknown {
     otherMatches: players.slice(1).map((p) => p.full_name),
     leagueValues: values.map((v) => {
       const c = JSON.parse(v.components) as Record<string, number>;
+      const q = v.quantiles ? (JSON.parse(v.quantiles) as { p10?: number; p90?: number }) : null;
       return {
         league: v.league,
         seasonPoints: Math.round(v.points),
+        seasonP10: q?.p10 !== undefined ? Math.round(q.p10) : null,
+        seasonP90: q?.p90 !== undefined ? Math.round(q.p90) : null,
         auctionDollar: v.auction_dollar,
         edgeDollar: v.edge !== null ? Math.round(v.edge) : null,
         tier: v.tier,

@@ -36,6 +36,13 @@
       "when": 1786653270117,
       "tag": "0004_worthless_magdalene",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786727343965,
+      "tag": "0005_bitter_cyclops",
+      "breakpoints": true
     }
   ]
 }

@@ -175,13 +175,40 @@ export interface WeeklyLine {
   week: number;
   projected: number;
   actual: number | null;
+  p10: number | null;
+  p90: number | null;
 }
 
-// Latest weekly projections for ONE player, grafted and scored to a league.
+// Weekly league-scored projections for ONE player. Prefers the persisted
+// valuation rows (which carry resampled p10/p90 bands); falls back to live
+// grafted computation for players outside the persisted set.
 export function weeklyLines(playerId: string, leagueId: string): WeeklyLine[] {
   const league = db.get<{ scoring_settings: string }>(sql`select scoring_settings from leagues where league_id = ${leagueId}`);
   if (!league) return [];
   const scoring = JSON.parse(league.scoring_settings) as ScoringSettings;
+
+  const actualsForPlayer = new Map(
+    db
+      .all<{ week: number; stats: string }>(
+        sql`select week, stats from stat_actuals where source = 'sleeper' and season = ${SEASON} and player_id = ${playerId}`,
+      )
+      .map((r) => [r.week, scoreStatLine(JSON.parse(r.stats) as StatLine, scoring)]),
+  );
+
+  const stored = db.all<{ week: number; pts: number; p10: number | null; p90: number | null }>(sql`
+    select week, pts, p10, p90 from league_weekly_points
+    where run_id = (select max(id) from valuation_runs where league_id = ${leagueId}) and player_id = ${playerId}
+    order by week
+  `);
+  if (stored.length > 0) {
+    return stored.map((r) => ({
+      week: r.week,
+      projected: r.pts,
+      actual: actualsForPlayer.get(r.week) ?? null,
+      p10: r.p10,
+      p90: r.p90,
+    }));
+  }
 
   const header = playerHeader(playerId);
   const pos = normalizePos(header?.pos) ?? '?';
@@ -211,6 +238,8 @@ export function weeklyLines(playerId: string, leagueId: string): WeeklyLine[] {
       week: r.week,
       projected: scoreStatLine(grafted, scoring),
       actual: actualStats ? scoreStatLine(actualStats, scoring) : null,
+      p10: null,
+      p90: null,
     };
   });
 }

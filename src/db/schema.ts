@@ -349,6 +349,11 @@ export const leagueWeeklyPoints = sqliteTable(
     playerId: text('player_id').notNull(),
     week: integer('week').notNull(),
     pts: real('pts').notNull(),
+    // Resampled distribution quantiles, recentered on pts (null = not sampled).
+    p10: real('p10'),
+    p25: real('p25'),
+    p75: real('p75'),
+    p90: real('p90'),
   },
   (t) => [primaryKey({ columns: [t.runId, t.playerId, t.week] })],
 );

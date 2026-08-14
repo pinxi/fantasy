@@ -34,6 +34,9 @@ export default async function EdgePage({
   else if (sort === 'points') rows = rows.sort((a, b) => b.points - a.points);
   else rows = rows.sort((a, b) => b.edge! - a.edge!);
 
+  const shown = rows.slice(0, 150);
+  const rangeMax = Math.max(...shown.map((r) => r.p90 ?? r.points), 1);
+
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-3 flex items-baseline gap-3">
@@ -63,13 +66,14 @@ export default async function EdgePage({
             <th className="px-2 py-1 text-right font-normal">our $</th>
             <th className="px-2 py-1 text-right font-normal">mkt $</th>
             <th className="px-2 py-1 text-right font-normal">edge</th>
+            <th className="px-2 py-1 font-normal">range p10–p90</th>
             <th className="px-2 py-1 text-right font-normal">fd</th>
             <th className="px-2 py-1 text-right font-normal">kr</th>
             <th className="px-2 py-1 text-right font-normal">bonus</th>
           </tr>
         </thead>
         <tbody>
-          {rows.slice(0, 150).map((row) => {
+          {shown.map((row) => {
             const marketDollar = row.dollar !== null && row.edge !== null ? row.dollar - row.edge : null;
             return (
               <tr key={row.playerId} className="border-t border-zinc-800/60">
@@ -88,6 +92,19 @@ export default async function EdgePage({
                 <td className={`px-2 py-0.5 text-right font-bold ${row.edge! > 2 ? 'text-emerald-400' : row.edge! < -2 ? 'text-red-400' : 'text-zinc-500'}`}>
                   {row.edge! > 0 ? `+${row.edge!.toFixed(0)}` : row.edge!.toFixed(0)}
                 </td>
+                <td className="px-2 py-0.5">
+                  {row.p10 !== null && row.p90 !== null ? (
+                    <div className="relative h-1.5 w-24 rounded-sm bg-zinc-800" title={`p10 ${row.p10.toFixed(0)} · median ${row.points.toFixed(0)} · p90 ${row.p90.toFixed(0)}`}>
+                      <div
+                        className="absolute h-1.5 rounded-sm bg-zinc-600"
+                        style={{ left: `${(row.p10 / rangeMax) * 100}%`, width: `${(Math.max(row.p90 - row.p10, 1) / rangeMax) * 100}%` }}
+                      />
+                      <div className="absolute -top-0.5 h-2.5 w-0.5 bg-emerald-400" style={{ left: `${(row.points / rangeMax) * 100}%` }} />
+                    </div>
+                  ) : (
+                    <span className="text-zinc-700">·</span>
+                  )}
+                </td>
                 <td className="px-2 py-0.5 text-right text-sky-500/80">{row.fdPts > 1 ? row.fdPts.toFixed(0) : '·'}</td>
                 <td className="px-2 py-0.5 text-right text-emerald-500/80">{row.krPts > 1 ? row.krPts.toFixed(0) : '·'}</td>
                 <td className="px-2 py-0.5 text-right text-violet-400/80">{row.bonusPts > 1 ? row.bonusPts.toFixed(0) : '·'}</td>
@@ -97,7 +114,8 @@ export default async function EdgePage({
         </tbody>
       </table>
       <p className="mt-3 text-[11px] text-zinc-600">
-        fd/kr/bonus = season points from modeled first downs, grafted kick returns, and bonus EV — the value generic rankings can't see
+        fd/kr/bonus = season points from modeled first downs, grafted kick returns, and bonus EV — the value generic rankings can't see ·
+        range bar = resampled season p10–p90 with the projection marked (wide bar = boom/bust, tight bar = floor)
         {meta?.isDynasty && (
           <>
             <br />

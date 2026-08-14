@@ -8,6 +8,7 @@ import { graftTables, graftWeeklyLine } from './graft';
 import { normalizePos, replacementLevels } from './replacement';
 import { assignTiers } from './tiers';
 import { auctionDollars } from './auction';
+import { computeAllDistributions } from './distributions';
 
 interface LeagueRow {
   league_id: string;
@@ -248,5 +249,65 @@ export function runValuation(leagueId: string, shared?: GraftedWeeks): Valuation
 export function runAllValuations(): ValuationSummary[] {
   const leagueRows = db.all<{ league_id: string }>(sql`select league_id from leagues where season = ${SEASON}`);
   const shared = buildGraftedWeeks();
-  return leagueRows.map((l) => runValuation(l.league_id, shared));
+  const summaries = leagueRows.map((l) => runValuation(l.league_id, shared));
+  applyDistributions(
+    leagueRows.map((l) => l.league_id),
+    shared,
+  );
+  return summaries;
+}
+
+// Single-league path (recompute button): base valuation + distributions.
+export function runValuationWithDistributions(leagueId: string): ValuationSummary {
+  const shared = buildGraftedWeeks();
+  const summary = runValuation(leagueId, shared);
+  applyDistributions([leagueId], shared);
+  return summary;
+}
+
+// Second pass: resample every persisted (player, week), score across leagues,
+// write weekly quantiles + season quantiles. Runs after base valuations so the
+// player sets are exactly what was persisted.
+export function applyDistributions(leagueIds: string[], shared: GraftedWeeks): void {
+  const leagues: import('./distributions').DistributionLeague[] = [];
+  const runByLeague = new Map<string, number>();
+  for (const leagueId of leagueIds) {
+    const run = db.get<{ id: number }>(sql`select max(id) as id from valuation_runs where league_id = ${leagueId}`);
+    if (!run?.id) continue;
+    const league = db.get<{ scoring_settings: string }>(sql`select scoring_settings from leagues where league_id = ${leagueId}`);
+    if (!league) continue;
+    const playerIds = new Set(
+      db
+        .all<{ player_id: string }>(sql`select distinct player_id from league_weekly_points where run_id = ${run.id}`)
+        .map((r) => r.player_id),
+    );
+    runByLeague.set(leagueId, run.id);
+    leagues.push({ leagueId, scoring: JSON.parse(league.scoring_settings) as ScoringSettings, playerIds });
+  }
+  if (leagues.length === 0) return;
+
+  const dists = computeAllDistributions(leagues, shared);
+
+  for (const league of leagues) {
+    const runId = runByLeague.get(league.leagueId)!;
+    const dist = dists.get(league.leagueId)!;
+    db.transaction((tx) => {
+      for (const [playerId, weeks] of dist.weekly) {
+        for (const [week, q] of weeks) {
+          tx.update(leagueWeeklyPoints)
+            .set({ p10: q.p10, p25: q.p25, p75: q.p75, p90: q.p90 })
+            .where(
+              sql`run_id = ${runId} and player_id = ${playerId} and week = ${week}`,
+            )
+            .run();
+        }
+      }
+      for (const [playerId, q] of dist.season) {
+        tx.update(leagueValues)
+          .set({ quantiles: q })
+          .where(sql`run_id = ${runId} and player_id = ${playerId}`)
+          .run();
+      }
+    });
+  }
 }
