@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { seasonOdds, type TeamOdds } from '@/services/odds';
 import { teamDetail, teamsOverview, type TeamDetail } from '@/services/team';
 
 export const dynamic = 'force-dynamic';
@@ -111,7 +112,7 @@ function MarketTrendChart({ d }: { d: TeamDetail }) {
   );
 }
 
-function SummaryBlock({ d, leagueId }: { d: TeamDetail; leagueId: string }) {
+function SummaryBlock({ d, leagueId, odds }: { d: TeamDetail; leagueId: string; odds: TeamOdds | null }) {
   return (
     <div className="rounded border border-zinc-800 p-3">
       <div className="mb-1 flex items-baseline gap-2">
@@ -120,6 +121,11 @@ function SummaryBlock({ d, leagueId }: { d: TeamDetail; leagueId: string }) {
         <span className="text-[11px] text-zinc-500">
           {d.summary.record ? `${d.summary.record.wins}-${d.summary.record.losses}` : ''}
         </span>
+        {odds && (
+          <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300" title={`monte carlo over the real schedule · exp wins ${odds.expWins.toFixed(1)}`}>
+            playoff {odds.playoffPct.toFixed(0)}% · title {odds.titlePct.toFixed(1)}%
+          </span>
+        )}
         <span className="ml-auto text-[11px] text-zinc-500">
           ros <span className="font-bold text-zinc-200">#{d.rosRank}</span> · mkt <span className="font-bold text-zinc-200">#{d.marketRank}</span>
         </span>
@@ -225,12 +231,13 @@ export default async function TeamPage({
 }) {
   const { leagueId, rosterId } = await params;
   const { vs } = await searchParams;
-  const d = await teamDetail(leagueId, Number.parseInt(rosterId, 10));
+  const [d, odds] = await Promise.all([teamDetail(leagueId, Number.parseInt(rosterId, 10)), seasonOdds(leagueId)]);
   if ('error' in d) return <p className="text-sm text-zinc-500">{d.error}</p>;
   const vsDetail = vs ? await teamDetail(leagueId, Number.parseInt(vs, 10)) : null;
   const compare = vsDetail && !('error' in vsDetail) ? vsDetail : null;
   const ov = await teamsOverview(leagueId);
   const others = 'error' in ov ? [] : ov.teams.filter((t) => t.rosterId !== d.summary.rosterId);
+  const oddsFor = (rid: number): TeamOdds | null => ('error' in odds ? null : (odds.teams.find((t) => t.rosterId === rid) ?? null));
 
   const vsOwnerH2h = compare
     ? d.history.h2h.find((h) => {
@@ -291,8 +298,8 @@ export default async function TeamPage({
       )}
 
       <div className={`grid grid-cols-1 gap-4 ${compare ? 'lg:grid-cols-2' : ''}`}>
-        <SummaryBlock d={d} leagueId={leagueId} />
-        {compare && <SummaryBlock d={compare} leagueId={leagueId} />}
+        <SummaryBlock d={d} leagueId={leagueId} odds={oddsFor(d.summary.rosterId)} />
+        {compare && <SummaryBlock d={compare} leagueId={leagueId} odds={oddsFor(compare.summary.rosterId)} />}
       </div>
 
       {!compare && (

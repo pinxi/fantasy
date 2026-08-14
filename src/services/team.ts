@@ -51,6 +51,8 @@ async function computeLeagueTeams(leagueId: string): Promise<LeagueTeams | null>
   const rosters = leagueRostersDetailed(leagueId);
   const posOf = buildPlayerPosMap();
   const market = marketMap(shape.format, 'fantasycalc');
+  const settingsRow = db.get<{ settings: string }>(sql`select settings from leagues where league_id = ${leagueId}`);
+  const playoffStart = (settingsRow ? ((JSON.parse(settingsRow.settings) as { playoff_week_start?: number }).playoff_week_start ?? 15) : 15) || 15;
 
   const teams: TeamSummary[] = [];
   const lineupsByRoster = new Map<number, Map<number, Array<{ slot: string; playerId: string | null; pts: number }>>>();
@@ -71,7 +73,7 @@ async function computeLeagueTeams(leagueId: string): Promise<LeagueTeams | null>
       const lineup = optimalWeekLineup(players, shape.starterSlots);
       byWeek.set(week, lineup.fills);
       rosTotal += lineup.total;
-      if (week >= 15) playoffTotal += lineup.total;
+      if (week >= playoffStart) playoffTotal += lineup.total;
       for (const fill of lineup.fills) {
         if (!fill.playerId) continue;
         const pos = posOf.get(fill.playerId) ?? '?';

@@ -12,6 +12,7 @@ import { evaluateTrade, findTrades, leagueRostersDetailed, parsePickLabel, resol
 import { streamsReport } from '@/services/streams';
 import { weekReport } from '@/services/matchup';
 import { teamDetail, teamsOverview } from '@/services/team';
+import { seasonOdds } from '@/services/odds';
 import { SLEEPER_USER_ID } from '@/config';
 
 // Read-only MCP tools over the same services layer as the web UI.
@@ -101,7 +102,7 @@ const TOOLS = [
   {
     name: 'get_team',
     description:
-      "Team-as-portfolio view for one roster (mine by default): predicted ROS points with Monte Carlo season band, league ranks (production vs market — a gap means win-now vs youth tilt), positional strength ranks, dynasty age profile, roster with per-player ROS points + market, market-value trend, and history back to 2021 where archived: season records, points-for, lineup efficiency (actual ÷ optimal), all-play win%, luck delta, and all-time head-to-head vs every current league member. Omit team to get MY team; pass team to inspect a rival; leave out detail with summary_only.",
+      "Team-as-portfolio view for one roster (mine by default): predicted ROS points with Monte Carlo season band, playoff/title odds from a full season sim over the real schedule and bracket, league ranks (production vs market — a gap means win-now vs youth tilt), positional strength ranks, dynasty age profile, roster with per-player ROS points + market, market-value trend, prediction-vs-actual vs the frozen pre-game numbers, and history back to 2021 where archived: season records, points-for, lineup efficiency (actual ÷ optimal), all-play win%, luck delta, and all-time head-to-head vs every current league member. Omit team to get MY team; pass team to inspect a rival; leave out detail with summary_only.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -391,25 +392,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = { error: `no league matching "${String(a?.league ?? '')}"` };
         break;
       }
-      const ov = await teamsOverview(leagueId);
+      const [ov, oddsRes] = await Promise.all([teamsOverview(leagueId), seasonOdds(leagueId)]);
       if ('error' in ov) {
         result = ov;
         break;
       }
+      const oddsFor = (rid: number) => ('error' in oddsRes ? null : (oddsRes.teams.find((t) => t.rosterId === rid) ?? null));
       const round1 = (n: number) => Math.round(n * 10) / 10;
       if (a?.summary_only === true) {
         result = {
           league: ov.league,
-          teams: ov.teams.map((t, i) => ({
-            rank: i + 1,
-            rosterId: t.rosterId,
-            name: t.name,
-            mine: t.isMe || undefined,
-            record: t.record ? `${t.record.wins}-${t.record.losses}${t.record.ties ? `-${t.record.ties}` : ''}` : null,
-            rosPts: round1(t.rosTotal),
-            playoffWksPts: round1(t.playoffTotal),
-            marketTotal: Math.round(t.marketTotal),
-          })),
+          oddsNote: 'error' in oddsRes ? oddsRes.error : undefined,
+          teams: ov.teams.map((t, i) => {
+            const o = oddsFor(t.rosterId);
+            return {
+              rank: i + 1,
+              rosterId: t.rosterId,
+              name: t.name,
+              mine: t.isMe || undefined,
+              record: t.record ? `${t.record.wins}-${t.record.losses}${t.record.ties ? `-${t.record.ties}` : ''}` : null,
+              rosPts: round1(t.rosTotal),
+              playoffWksPts: round1(t.playoffTotal),
+              marketTotal: Math.round(t.marketTotal),
+              expWins: o ? round1(o.expWins) : undefined,
+              playoffPct: o ? round1(o.playoffPct) : undefined,
+              titlePct: o ? round1(o.titlePct) : undefined,
+            };
+          }),
         };
         break;
       }
@@ -426,6 +435,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = d;
         break;
       }
+      const myOdds = oddsFor(target.rosterId);
       result = {
         league: d.league,
         team: d.summary.name,
@@ -433,6 +443,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         record: d.summary.record ? `${d.summary.record.wins}-${d.summary.record.losses}` : null,
         rosRank: d.rosRank,
         marketRank: d.marketRank,
+        odds: myOdds
+          ? { expWins: round1(myOdds.expWins), playoffPct: round1(myOdds.playoffPct), titlePct: round1(myOdds.titlePct) }
+          : 'error' in oddsRes
+            ? oddsRes.error
+            : undefined,
         seasonPts: { mean: round1(d.seasonBand.mean), p10: round1(d.seasonBand.p10), p90: round1(d.seasonBand.p90) },
         playoffWksPts: round1(d.summary.playoffTotal),
         marketTotal: Math.round(d.summary.marketTotal),
