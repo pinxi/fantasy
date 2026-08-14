@@ -63,6 +63,9 @@ export default function Home() {
               <Link className="text-cyan-400 hover:underline" href={`/league/${l.leagueId}/streams`}>
                 streams →
               </Link>
+              <Link className="text-rose-400 hover:underline" href={`/league/${l.leagueId}/week`}>
+                week →
+              </Link>
               <a className="text-zinc-500 hover:underline" href={`/league/${l.leagueId}/board.csv`}>
                 csv
               </a>

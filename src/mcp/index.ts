@@ -10,6 +10,7 @@ import { getLeagueIntel } from '@/services/intel';
 import { marketDeltas, playerNews } from '@/services/player';
 import { evaluateTrade, findTrades, leagueRostersDetailed, parsePickLabel, resolvePlayerOnRoster, type TradeAsset } from '@/services/trade';
 import { streamsReport } from '@/services/streams';
+import { weekReport } from '@/services/matchup';
 import { SLEEPER_USER_ID } from '@/config';
 
 // Read-only MCP tools over the same services layer as the web UI.
@@ -91,6 +92,20 @@ const TOOLS = [
         league: { type: 'string' },
         position: { type: 'string', description: 'Optional: upgrade target QB/RB/WR/TE/K/DEF/DL/LB/DB' },
         stance: { type: 'string', description: 'any (default) | consolidate (send 2 get 1) | spread (send 1 get 2)' },
+      },
+      required: ['league'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_matchup',
+    description:
+      "Weekly command center for one league: Monte Carlo win probability against my real opponent (or the league-median lineup preseason), both optimal lineups with p10–p90 bands, and start/sit swap suggestions scored by Δwin% — NOT Δpoints. Suggestions flagged 'disagree' are where the two lenses conflict: trust win% (underdogs want ceiling/variance, favorites want floor). Empty starting slots are called out.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        league: { type: 'string', description: 'League name (partial ok) or league_id' },
+        week: { type: 'number', description: 'NFL week 1-18; defaults to the current week' },
       },
       required: ['league'],
       additionalProperties: false,
@@ -351,6 +366,51 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             stance: a?.stance ? (String(a.stance) as 'any' | 'consolidate' | 'spread') : undefined,
           })
         : { error: `no league matching "${String(a?.league ?? '')}"` };
+      break;
+    }
+    case 'get_matchup': {
+      const a = args as { league?: unknown; week?: unknown };
+      const leagueId = resolveLeagueId(String(a?.league ?? ''));
+      if (!leagueId) {
+        result = { error: `no league matching "${String(a?.league ?? '')}"` };
+        break;
+      }
+      const report = await weekReport(leagueId, typeof a?.week === 'number' ? a.week : undefined);
+      if ('error' in report) {
+        result = report;
+        break;
+      }
+      const round1 = (n: number) => Math.round(n * 10) / 10;
+      const lineupOut = (rows: typeof report.myLineup) =>
+        rows.map((r) => ({
+          slot: r.slot,
+          name: r.name,
+          pos: r.pos,
+          mean: round1(r.mean),
+          p10: r.p10 !== null ? round1(r.p10) : null,
+          p90: r.p90 !== null ? round1(r.p90) : null,
+        }));
+      result = {
+        league: report.league,
+        week: report.week,
+        opponent: report.opponentName,
+        syntheticOpponent: report.synthetic || undefined,
+        winProbPct: round1(report.winProb * 100),
+        stance: report.stance,
+        myTotalMean: round1(report.myTotalMean),
+        oppTotalMean: round1(report.oppTotalMean),
+        emptyStartingSlots: report.myLineup.filter((r) => !r.playerId).length || undefined,
+        myLineup: lineupOut(report.myLineup),
+        oppLineup: report.oppLineup.length > 0 ? lineupOut(report.oppLineup) : undefined,
+        swapSuggestions: report.suggestions.map((s) => ({
+          slot: s.slot,
+          sit: s.out,
+          start: s.in,
+          deltaWinPp: round1(s.deltaWin),
+          deltaMean: round1(s.deltaMean),
+          disagree: s.disagree || undefined,
+        })),
+      };
       break;
     }
     case 'stream_or_hold': {
