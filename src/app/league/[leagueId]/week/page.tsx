@@ -105,7 +105,14 @@ export default async function WeekPage({
         <div className="flex flex-wrap items-baseline gap-4">
           <span className={`font-mono text-2xl font-bold ${winColor}`}>{winPct.toFixed(0)}%</span>
           <span className="text-sm text-zinc-400">
-            win probability vs <span className="text-zinc-200">{report.opponentName}</span>
+            win probability vs{' '}
+            {report.opponentRosterId !== null ? (
+              <Link href={`/league/${leagueId}/team/${report.opponentRosterId}?vs=${report.myRosterId}`} className="text-zinc-200 hover:underline">
+                {report.opponentName}
+              </Link>
+            ) : (
+              <span className="text-zinc-200">{report.opponentName}</span>
+            )}
             {report.synthetic && <span className="ml-1 text-[10px] text-zinc-600">(no pairing yet — league-median opponent)</span>}
           </span>
           <span className="ml-auto font-mono text-[12px] text-zinc-500">

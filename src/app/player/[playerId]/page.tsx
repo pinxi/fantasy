@@ -3,6 +3,7 @@ import {
   adpSeries,
   marketDeltas,
   marketSeries,
+  pastSeasonLines,
   playerHeader,
   playerLeagueValues,
   playerNews,
@@ -104,6 +105,7 @@ export default async function PlayerPage({
   const selectedLeague = league ?? values[0]?.leagueId ?? statuses[0]?.leagueId;
   const weekly = selectedLeague ? weeklyLines(playerId, selectedLeague) : [];
   const selectedLeagueName = values.find((v) => v.leagueId === selectedLeague)?.league ?? statuses.find((s) => s.leagueId === selectedLeague)?.league;
+  const pastSeasons = selectedLeague ? pastSeasonLines(playerId, selectedLeague) : [];
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -201,6 +203,37 @@ export default async function PlayerPage({
               ))}
             </tbody>
           </table>
+          {pastSeasons.length > 0 && (
+            <>
+              <div className="mt-3 mb-1 text-[11px] font-bold text-zinc-300">
+                past seasons <span className="font-normal text-zinc-600">(actuals, this league's scoring)</span>
+              </div>
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-left text-[10px] text-zinc-600">
+                    <th className="py-0.5 font-normal">season</th>
+                    <th className="py-0.5 text-right font-normal">gp</th>
+                    <th className="py-0.5 text-right font-normal">pts</th>
+                    <th className="py-0.5 text-right font-normal">ppg</th>
+                    <th className="py-0.5 text-right font-normal">best</th>
+                    <th className="py-0.5 text-right font-normal">worst</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pastSeasons.map((s) => (
+                    <tr key={s.season} className="border-t border-zinc-800/60">
+                      <td className="py-0.5 text-zinc-400">{s.season}</td>
+                      <td className="py-0.5 text-right text-zinc-500">{s.games}</td>
+                      <td className="py-0.5 text-right font-mono text-zinc-300">{s.points.toFixed(0)}</td>
+                      <td className="py-0.5 text-right font-mono text-zinc-300">{s.ppg.toFixed(1)}</td>
+                      <td className="py-0.5 text-right font-mono text-emerald-500/80">{s.best.toFixed(0)}</td>
+                      <td className="py-0.5 text-right font-mono text-red-400/70">{s.worst.toFixed(0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
 
         <div className="rounded border border-zinc-800 p-3">

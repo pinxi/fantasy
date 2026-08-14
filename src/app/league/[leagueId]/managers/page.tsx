@@ -125,6 +125,9 @@ export default async function ManagersPage({ params }: { params: Promise<{ leagu
         <Link href={`/league/${leagueId}/edge`} className="text-xs text-sky-400 hover:underline">
           edge board →
         </Link>
+        <Link href={`/league/${leagueId}/teams`} className="text-xs text-zinc-300 hover:underline">
+          teams →
+        </Link>
       </div>
 
       {/* overview: who they are */}

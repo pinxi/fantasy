@@ -244,6 +244,47 @@ export function weeklyLines(playerId: string, leagueId: string): WeeklyLine[] {
   });
 }
 
+export interface PastSeasonLine {
+  season: number;
+  games: number;
+  points: number; // scored through the selected league's settings
+  ppg: number;
+  best: number;
+  worst: number;
+}
+
+// Past-season actuals re-scored through the selected league (stat_actuals
+// currently spans 2024-25 — the comp-pool backfill).
+export function pastSeasonLines(playerId: string, leagueId: string): PastSeasonLine[] {
+  const league = db.get<{ scoring_settings: string }>(sql`select scoring_settings from leagues where league_id = ${leagueId}`);
+  if (!league) return [];
+  const scoring = JSON.parse(league.scoring_settings) as ScoringSettings;
+  const rows = db.all<{ season: number; stats: string }>(
+    sql`select season, stats from stat_actuals where source = 'sleeper' and player_id = ${playerId} and season < ${SEASON}`,
+  );
+  const bySeason = new Map<number, number[]>();
+  for (const r of rows) {
+    const pts = scoreStatLine(JSON.parse(r.stats) as StatLine, scoring);
+    let arr = bySeason.get(r.season);
+    if (!arr) bySeason.set(r.season, (arr = []));
+    arr.push(pts);
+  }
+  return [...bySeason.entries()]
+    .map(([season, pts]) => {
+      const played = pts.filter((p) => p !== 0);
+      const total = pts.reduce((a, b) => a + b, 0);
+      return {
+        season,
+        games: played.length,
+        points: total,
+        ppg: played.length > 0 ? total / played.length : 0,
+        best: played.length > 0 ? Math.max(...played) : 0,
+        worst: played.length > 0 ? Math.min(...played) : 0,
+      };
+    })
+    .sort((a, b) => b.season - a.season);
+}
+
 export interface NewsItem {
   source: string;
   title: string | null;

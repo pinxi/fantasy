@@ -11,6 +11,7 @@ import { marketDeltas, playerNews } from '@/services/player';
 import { evaluateTrade, findTrades, leagueRostersDetailed, parsePickLabel, resolvePlayerOnRoster, type TradeAsset } from '@/services/trade';
 import { streamsReport } from '@/services/streams';
 import { weekReport } from '@/services/matchup';
+import { teamDetail, teamsOverview } from '@/services/team';
 import { SLEEPER_USER_ID } from '@/config';
 
 // Read-only MCP tools over the same services layer as the web UI.
@@ -92,6 +93,21 @@ const TOOLS = [
         league: { type: 'string' },
         position: { type: 'string', description: 'Optional: upgrade target QB/RB/WR/TE/K/DEF/DL/LB/DB' },
         stance: { type: 'string', description: 'any (default) | consolidate (send 2 get 1) | spread (send 1 get 2)' },
+      },
+      required: ['league'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_team',
+    description:
+      "Team-as-portfolio view for one roster (mine by default): predicted ROS points with Monte Carlo season band, league ranks (production vs market — a gap means win-now vs youth tilt), positional strength ranks, dynasty age profile, roster with per-player ROS points + market, market-value trend, and history back to 2021 where archived: season records, points-for, lineup efficiency (actual ÷ optimal), all-play win%, luck delta, and all-time head-to-head vs every current league member. Omit team to get MY team; pass team to inspect a rival; leave out detail with summary_only.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        league: { type: 'string', description: 'League name (partial ok) or league_id' },
+        team: { type: 'string', description: "Optional team/owner name (partial ok) or roster_id; defaults to my roster" },
+        summary_only: { type: 'boolean', description: 'true = just the league-wide team table (ranks, ROS, market), no detail' },
       },
       required: ['league'],
       additionalProperties: false,
@@ -366,6 +382,84 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             stance: a?.stance ? (String(a.stance) as 'any' | 'consolidate' | 'spread') : undefined,
           })
         : { error: `no league matching "${String(a?.league ?? '')}"` };
+      break;
+    }
+    case 'get_team': {
+      const a = args as { league?: unknown; team?: unknown; summary_only?: unknown };
+      const leagueId = resolveLeagueId(String(a?.league ?? ''));
+      if (!leagueId) {
+        result = { error: `no league matching "${String(a?.league ?? '')}"` };
+        break;
+      }
+      const ov = await teamsOverview(leagueId);
+      if ('error' in ov) {
+        result = ov;
+        break;
+      }
+      const round1 = (n: number) => Math.round(n * 10) / 10;
+      if (a?.summary_only === true) {
+        result = {
+          league: ov.league,
+          teams: ov.teams.map((t, i) => ({
+            rank: i + 1,
+            rosterId: t.rosterId,
+            name: t.name,
+            mine: t.isMe || undefined,
+            record: t.record ? `${t.record.wins}-${t.record.losses}${t.record.ties ? `-${t.record.ties}` : ''}` : null,
+            rosPts: round1(t.rosTotal),
+            playoffWksPts: round1(t.playoffTotal),
+            marketTotal: Math.round(t.marketTotal),
+          })),
+        };
+        break;
+      }
+      const query = a?.team ? String(a.team).toLowerCase() : null;
+      const target = query
+        ? ov.teams.find((t) => String(t.rosterId) === query || t.name.toLowerCase().includes(query))
+        : ov.teams.find((t) => t.isMe);
+      if (!target) {
+        result = { error: `no team matching "${String(a?.team ?? 'mine')}"`, teams: ov.teams.map((t) => t.name) };
+        break;
+      }
+      const d = await teamDetail(leagueId, target.rosterId);
+      if ('error' in d) {
+        result = d;
+        break;
+      }
+      result = {
+        league: d.league,
+        team: d.summary.name,
+        mine: d.summary.isMe || undefined,
+        record: d.summary.record ? `${d.summary.record.wins}-${d.summary.record.losses}` : null,
+        rosRank: d.rosRank,
+        marketRank: d.marketRank,
+        seasonPts: { mean: round1(d.seasonBand.mean), p10: round1(d.seasonBand.p10), p90: round1(d.seasonBand.p90) },
+        playoffWksPts: round1(d.summary.playoffTotal),
+        marketTotal: Math.round(d.summary.marketTotal),
+        posStrength: d.posStrength.map((p) => ({ pos: p.pos, rosPts: round1(p.mine), leagueMedian: round1(p.leagueMedian), rank: `${p.rank}/${p.teams}` })),
+        ageProfile: {
+          valueWeightedAge: d.ageProfile.valueWeightedAge !== null ? round1(d.ageProfile.valueWeightedAge) : null,
+          valueShareByAge: Object.fromEntries(d.ageProfile.buckets.map((b) => [b.label, Math.round(b.share * 100) + '%'])),
+        },
+        topRoster: d.roster.slice(0, 12).map((r) => ({
+          name: r.name,
+          pos: r.pos,
+          age: r.age,
+          rosPts: round1(r.rosPts),
+          market: Math.round(r.market),
+          status: r.taxi ? 'taxi' : r.reserve ? 'ir' : undefined,
+        })),
+        marketTrend: d.marketTrend.map((t) => ({ date: t.date, total: Math.round(t.total) })),
+        seasons: d.history.seasons.map((s) => ({
+          season: s.season,
+          record: s.record ? `${s.record.wins}-${s.record.losses}${s.record.ties ? `-${s.record.ties}` : ''}` : null,
+          pf: Math.round(s.pf),
+          lineupEfficiencyPct: s.efficiency !== null ? Math.round(s.efficiency * 100) : null,
+          allPlayPct: s.allPlayPct !== null ? Math.round(s.allPlayPct * 100) : null,
+          luckPp: s.luckDelta !== null ? Math.round(s.luckDelta * 100) : null,
+        })),
+        h2hAllTime: d.history.h2h.map((h) => ({ vs: h.name, record: `${h.wins}-${h.losses}${h.ties ? `-${h.ties}` : ''}` })),
+      };
       break;
     }
     case 'get_matchup': {

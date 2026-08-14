@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { fetchRaw } from '@/lib/http';
 import { statsHash } from '@/lib/hash';
@@ -375,36 +376,38 @@ const matchupsJob: JobSpec = {
   },
 };
 
-// Walk previous_league_id chains from the 2026 leagues to their 2025 versions and
-// pull full-season matchups (players_points = the scoring-validation oracle).
-const backfill2025: JobSpec = {
-  name: 'sleeper.matchups_backfill_2025',
+// Full-season matchup grids for every archived past season (2021+). The league
+// docs are already in `leagues` via the history job; league-seasons with a
+// complete grid are skipped, so the monthly re-run is nearly free. Subsumes the
+// old matchups_backfill_2025 job (players_points = the scoring-validation
+// oracle; older seasons feed team history / H2H / all-play).
+const backfillHistory: JobSpec = {
+  name: 'sleeper.matchups_backfill_history',
   source: 'sleeper',
   cadence: { cron: '0 7 1 * *', catchUp: true, staleAfterHours: 24 * 14 },
   timeoutMs: 600_000,
   async run(ctx): Promise<JobReport> {
     const warnings: string[] = [];
     let written = 0;
-    const current = ctx.db.select().from(leagues).all().filter((l) => l.season === SEASON);
-    for (const league of current) {
-      let prevId = league.previousLeagueId;
-      let hops = 0;
-      while (prevId && hops < 3) {
-        const doc = LeagueSchema.parse(await getArchived(ctx, 'league_doc', prevId, `${BASE}/league/${prevId}`));
-        upsertLeague(ctx, doc);
-        if (doc.season === 2025) {
-          for (let week = 1; week <= 18; week++) {
-            try {
-              written += await ingestMatchupWeek(ctx, doc.league_id, week);
-            } catch (err) {
-              warnings.push(`backfill ${doc.league_id} w${week}: ${err instanceof Error ? err.message : String(err)}`);
-            }
-            await sleep(60);
-          }
-          break;
+    const past = ctx.db.select().from(leagues).all().filter((l) => l.season < SEASON);
+    for (const league of past) {
+      const weeksHave = new Set(
+        ctx.db
+          .select({ week: matchups.week })
+          .from(matchups)
+          .where(eq(matchups.leagueId, league.leagueId))
+          .all()
+          .map((m) => m.week),
+      );
+      if (weeksHave.size >= 17) continue;
+      for (let week = 1; week <= 18; week++) {
+        if (weeksHave.has(week)) continue;
+        try {
+          written += await ingestMatchupWeek(ctx, league.leagueId, week);
+        } catch (err) {
+          warnings.push(`backfill ${league.leagueId} w${week}: ${err instanceof Error ? err.message : String(err)}`);
         }
-        prevId = doc.previous_league_id ?? null;
-        hops++;
+        await sleep(60);
       }
     }
     return { fetched: written, written, warnings };
@@ -544,4 +547,4 @@ const trendingJob: JobSpec = {
   },
 };
 
-export const sleeperJobs: JobSpec[] = [playersDump, leaguesJob, matchupsJob, backfill2025, transactionsJob, trendingJob, leagueHistory];
+export const sleeperJobs: JobSpec[] = [playersDump, leaguesJob, matchupsJob, backfillHistory, transactionsJob, trendingJob, leagueHistory];

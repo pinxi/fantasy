@@ -109,6 +109,8 @@ export interface WeekReport {
   league: string;
   week: number;
   synthetic: boolean; // no pairing found — opponent is the league median lineup
+  myRosterId: number;
+  opponentRosterId: number | null;
   opponentName: string;
   winProb: number;
   stance: string;
@@ -267,6 +269,8 @@ export async function weekReport(leagueId: string, weekOverride?: number): Promi
     league: shape.name,
     week,
     synthetic,
+    myRosterId: mine.rosterId,
+    opponentRosterId: opponent?.rosterId ?? null,
     opponentName,
     winProb,
     stance,
