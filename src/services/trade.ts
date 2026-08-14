@@ -580,7 +580,7 @@ export async function findTrades(leagueId: string, opts: FindTradesOptions = {})
         theirDeltaMarket: c.theirDeltaMarket,
         plausibility,
         score: myDeltaRos * plausibility,
-        reasons,
+        reasons: [...new Set(reasons)],
       });
     }
   }
