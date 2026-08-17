@@ -14,9 +14,14 @@ import { leagueRostersDetailed, leagueShape } from './trade';
 // from the CURRENT record mid-season), then play the playoff bracket per the
 // league's actual settings (start week, team count, re-seeding, two-week
 // championship). Odds = fractions over SIMS worlds.
+//
+// The 500-world sim is too heavy for web requests on the Fly shared vCPU
+// (232s → 502), so the worker computes it (valuation.odds job) and persists
+// to season_odds_cache; web reads the cache — returning a slightly stale run's
+// odds rather than ever simulating inline. On-demand compute happens only when
+// no cache row exists at all (fresh league / local dev).
 
 const SIMS = 500;
-const CACHE_TTL_MS = 15 * 60_000;
 
 export interface TeamOdds {
   rosterId: number;
@@ -36,7 +41,9 @@ export interface SeasonOdds {
   teams: TeamOdds[];
 }
 
-const cache = new Map<string, { at: number; value: SeasonOdds }>();
+export interface SeasonOddsResult extends SeasonOdds {
+  staleRun?: boolean; // served from a previous run's cache (worker refresh pending)
+}
 
 async function pairingsForWeek(leagueId: string, week: number): Promise<Map<number, number>> {
   const stored = db.all<{ roster_id: number; matchup_id: number | null }>(
@@ -54,7 +61,24 @@ async function pairingsForWeek(leagueId: string, week: number): Promise<Map<numb
   }
 }
 
-export async function seasonOdds(leagueId: string): Promise<SeasonOdds | { error: string }> {
+// Web path: cache-only, never simulates unless no cache row has ever been
+// written for the league.
+export async function seasonOdds(leagueId: string): Promise<SeasonOddsResult | { error: string }> {
+  const run = db.get<{ id: number }>(sql`select max(id) as id from valuation_runs where league_id = ${leagueId}`);
+  if (!run?.id) return { error: 'no valuation run — recompute first' };
+  const cached = db.get<{ run_id: number; payload: string }>(
+    sql`select run_id, payload from season_odds_cache where league_id = ${leagueId}`,
+  );
+  if (cached) {
+    const value = JSON.parse(cached.payload) as SeasonOddsResult;
+    if (cached.run_id !== run.id) value.staleRun = true;
+    return value;
+  }
+  return computeSeasonOdds(leagueId, { persist: false });
+}
+
+// Worker path: full simulation, persisted for the web to read.
+export async function computeSeasonOdds(leagueId: string, opts: { persist: boolean }): Promise<SeasonOdds | { error: string }> {
   const shape = leagueShape(leagueId);
   if (!shape) return { error: `league not found: ${leagueId}` };
 
@@ -73,9 +97,6 @@ export async function seasonOdds(leagueId: string): Promise<SeasonOdds | { error
 
   const clock = await getNflClock();
   const fromWeek = clock.seasonType === 'regular' ? Math.max(clock.week, 1) : 1;
-  const cacheKey = `${leagueId}:${run.id}:${fromWeek}`;
-  const hit = cache.get(cacheKey);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
 
   const approximations: string[] = [];
   if ((settings.divisions ?? 0) >= 2) approximations.push('division seeding approximated by overall record');
@@ -244,6 +265,12 @@ export async function seasonOdds(leagueId: string): Promise<SeasonOdds | { error
       }))
       .sort((a, b) => b.titlePct - a.titlePct || b.playoffPct - a.playoffPct),
   };
-  cache.set(cacheKey, { at: Date.now(), value });
+  if (opts.persist) {
+    db.run(sql`
+      insert into season_odds_cache (league_id, run_id, payload, computed_at)
+      values (${leagueId}, ${run.id}, ${JSON.stringify(value)}, ${Date.now()})
+      on conflict(league_id) do update set run_id = excluded.run_id, payload = excluded.payload, computed_at = excluded.computed_at
+    `);
+  }
   return value;
 }

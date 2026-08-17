@@ -396,6 +396,15 @@ export const frozenTeamPredictions = sqliteTable(
   (t) => [primaryKey({ columns: [t.leagueId, t.season, t.week, t.rosterId] })],
 );
 
+// Season-sim results computed by the worker (valuation.odds job) so web
+// requests read instead of running 500-world Monte Carlo on a shared vCPU.
+export const seasonOddsCache = sqliteTable('season_odds_cache', {
+  leagueId: text('league_id').primaryKey(),
+  runId: integer('run_id').notNull(),
+  payload: text('payload').notNull(), // SeasonOdds JSON
+  computedAt: integer('computed_at').notNull(),
+});
+
 export const jobRuns = sqliteTable(
   'job_runs',
   {

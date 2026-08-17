@@ -1,3 +1,7 @@
+import { sql } from 'drizzle-orm';
+import { db } from '@/db/client';
+import { SEASON } from '@/config';
+import { computeSeasonOdds } from '@/services/odds';
 import type { JobReport, JobSpec } from '@/adapters/types';
 import { runAllValuations } from './compute';
 import { freezeAllLeagues } from './freeze';
@@ -40,4 +44,29 @@ const freezeJob: JobSpec = {
   },
 };
 
-export const valuationJobs: JobSpec[] = [nightlyJob, freezeJob];
+// Season-sim odds after the nightly revalue (serial queue means this waits for
+// the nightly to finish). Web requests read the persisted result — the sim is
+// too heavy for a shared vCPU at request time.
+const oddsJob: JobSpec = {
+  name: 'valuation.odds',
+  source: 'valuation',
+  cadence: { cron: '10 7 * * *', catchUp: true, staleAfterHours: 26 },
+  timeoutMs: 600_000,
+  async run(ctx): Promise<JobReport> {
+    const leagues = db.all<{ league_id: string }>(sql`select league_id from leagues where season = ${SEASON}`);
+    const warnings: string[] = [];
+    let written = 0;
+    for (const l of leagues) {
+      const result = await computeSeasonOdds(l.league_id, { persist: true });
+      if ('error' in result) {
+        warnings.push(result.error);
+      } else {
+        written++;
+        ctx.log.info({ league: result.league, teams: result.teams.length }, 'odds cached');
+      }
+    }
+    return { fetched: leagues.length, written, warnings };
+  },
+};
+
+export const valuationJobs: JobSpec[] = [nightlyJob, freezeJob, oddsJob];
